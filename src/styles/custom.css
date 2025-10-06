@@ -1,0 +1,312 @@
+/* Import header styles */
+@import './header.css';
+
+/* Import Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+:root {
+  /* Sentry brand colors - dark mode is default */
+  --sl-color-accent-low: #2b1e44;
+  --sl-color-accent: #8661c5;
+  --sl-color-accent-high: #9b79df;
+
+  /* Background colors */
+  --sl-color-bg: #14101c;
+  --sl-color-bg-nav: #1e1431;
+  --sl-color-bg-sidebar: var(--sl-color-bg-nav);
+  --sl-color-bg-inline-code: rgba(134, 97, 197, 0.15);
+
+  /* Text colors */
+  --sl-color-text: #ffffff;
+  --sl-color-text-accent: var(--sl-color-accent-high);
+  --sl-color-text-invert: var(--sl-color-bg);
+
+  /* Border colors */
+  --sl-color-border: #382a50;
+
+  /* Other UI colors */
+  --sl-color-bg-selection: rgba(134, 97, 197, 0.25);
+
+  /* Sentry button styles */
+  --sl-button-color: white;
+  --sl-button-border-radius: 4px;
+
+  /* Layout adjustments */
+  --sl-content-width: 65rem;
+  --sl-sidebar-width: 18rem;
+  --sl-font-size-sm: 0.95rem;
+  
+  /* Increase base font sizes */
+  --sl-text-base: 1.125rem; /* 18px instead of 16px */
+  --sl-text-body: 1.125rem; /* Main body text */
+
+  /* Font family */
+  --sl-font:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Light mode adjustments if needed */
+:root[data-theme='light'] {
+  --sl-color-bg: #f5f5f5;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: var(--sl-color-bg-nav);
+  --sl-color-text: #14101c;
+  --sl-color-text-accent: #6c5fc9;
+  --sl-color-accent-high: #6c5fc9;
+  --sl-color-accent: #593c9b;
+  --sl-color-accent-low: #e1d9ff;
+  --sl-color-border: #e2e2e2;
+  --sl-color-bg-inline-code: rgba(134, 97, 197, 0.1);
+}
+
+/* Global font styling */
+* {
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif !important;
+  font-weight: 400 !important; /* Inter 18pt regular weight */
+  font-style: normal !important; /* Ensure no italic */
+}
+
+/* Enhance UI components to match Sentry's UI */
+.site-title,
+.sl-nav-logo,
+.sl-nav-logo span,
+.sl-nav-logo a,
+header .site-title,
+nav .site-title {
+  font-weight: 900 !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 18pt !important;
+}
+
+/* Make all headings black weight */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4,
+.sl-markdown-content h5,
+.sl-markdown-content h6 {
+  font-weight: 900 !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+/* Main page styles */
+[data-has-hero] .hero {
+  padding: 5rem 0 6rem;
+  background: linear-gradient(135deg, #1e1431 0%, #14101c 100%);
+  margin-left: calc(-50vw + 50%);
+  margin-right: calc(-50vw + 50%);
+  width: 100vw;
+  position: relative;
+}
+
+/* Create a unified container for both text and image */
+[data-has-hero] .hero > div {
+  max-width: var(--sl-content-width);
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 3rem;
+}
+
+/* Text content container */
+[data-has-hero] .hero .sl-flex {
+  flex: 1;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  transform: none;
+}
+
+/* Image container */
+[data-has-hero] .hero .hero-image {
+  flex: 0 0 auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  transform: none;
+}
+
+/* Logo styling */
+[data-has-hero] .hero img {
+  margin: 0;
+  transform: scale(1.2);
+  max-width: 400px;
+  width: auto;
+  height: auto;
+}
+
+/* Responsive design for mobile */
+@media (max-width: 768px) {
+  [data-has-hero] .hero > div {
+    flex-direction: column;
+    text-align: center;
+    gap: 2rem;
+  }
+  
+  [data-has-hero] .hero .sl-flex {
+    order: 1;
+  }
+  
+  [data-has-hero] .hero .hero-image {
+    order: 2;
+  }
+  
+  [data-has-hero] .hero img {
+    transform: scale(1);
+    max-width: 300px;
+  }
+}
+
+[data-has-hero] .hero h1 {
+  font-size: 5rem;
+  max-width: 16ch;
+  margin: 0 0 1rem 0;
+  line-height: 1;
+  color: white;
+  text-align: left;
+  font-weight: 900;
+  font-style: normal;
+  font-family: 'Inter', sans-serif;
+}
+
+[data-has-hero] .hero .tagline {
+  color: white;
+  font-size: 1.4rem;
+  max-width: 32ch;
+  margin: 0 0 2rem 0;
+  text-align: left;
+  font-weight: 400;
+  font-style: normal;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Hero action buttons styling - modern Sentry style */
+[data-has-hero] .hero .actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-start;
+  align-items: center;
+  margin: 0;
+}
+
+[data-has-hero] .hero .actions a {
+  padding: 1rem 2rem;
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  font-size: 1rem;
+  border: 2px solid transparent;
+}
+
+/* Primary button (Get Started) */
+[data-has-hero] .hero .actions a:first-child {
+  background-color: white;
+  color: #1a0f2e !important;
+}
+
+[data-has-hero] .hero .actions a:first-child:hover {
+  background-color: #f8f9fa;
+  transform: translateY(-1px);
+}
+
+/* Secondary button (Sentry.io) */
+[data-has-hero] .hero .actions a:last-child {
+  background-color: transparent;
+  color: white !important;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+[data-has-hero] .hero .actions a:last-child:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+/* Content wrapper */
+.content-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+/* Card styles to match Sentry UI */
+.card {
+  background-color: var(--sl-color-bg-nav);
+  border: 1px solid var(--sl-color-border);
+  border-radius: 8px;
+}
+
+/* Landing page styles */
+.landing-section {
+  padding: 4rem 0;
+}
+
+.landing-heading {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+/* Fix sidebar and main content colors */
+.sidebar {
+  background-color: var(--sl-color-bg-sidebar);
+  border-right: 1px solid var(--sl-color-border);
+}
+
+/* Tag and badge styling */
+.badge {
+  background-color: var(--sl-color-accent-low);
+  color: var(--sl-color-text);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.5rem;
+}
+
+/* Table of contents styling */
+.toc-wrapper {
+  border-left: 1px solid var(--sl-color-border);
+}
+
+/* Increase paragraph and body text size */
+.sl-markdown-content p,
+.sl-markdown-content li,
+.sl-markdown-content td,
+.sl-markdown-content dd {
+  font-size: 1.125rem; /* 18px */
+  line-height: 1.7;
+}
+
+/* Increase code snippet font size */
+.sl-markdown-content pre,
+.sl-markdown-content code,
+.sl-markdown-content pre code,
+.expressive-code pre,
+.expressive-code code {
+  font-size: 1rem !important; /* 16px instead of default smaller size */
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace !important;
+}
+
+/* Inline code */
+.sl-markdown-content :not(pre) > code {
+  font-size: 0.95rem !important; /* Slightly smaller than block code */
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace !important;
+}

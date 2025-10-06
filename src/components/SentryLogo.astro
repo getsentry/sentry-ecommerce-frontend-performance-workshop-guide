@@ -1,0 +1,38 @@
+---
+// Custom Sentry logo component - image version
+---
+
+<div class="sentry-logo">
+  <a href="/" aria-label="Go to homepage">
+    <img src="/assets/sentrytext.png" alt="Sentry Build" class="sentry-logo-image" />
+  </a>
+</div>
+
+<style>
+  .sentry-logo {
+    display: flex;
+    align-items: center;
+    margin-right: 0.5em;
+  }
+  
+  .sentry-logo a {
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+  }
+  
+  .sentry-logo-image {
+    position: absolute;
+    width: auto;
+    object-fit: contain;
+    max-width: 175px;
+    left: 20px;
+  }
+  
+  /* Ensure image scales properly on smaller screens */
+  @media (max-width: 768px) {
+    .sentry-logo-image {
+      max-width: 110px;
+    }
+  }
+</style> 
