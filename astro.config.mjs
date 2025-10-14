@@ -9,7 +9,7 @@ import sentry from '@sentry/astro';
 export default defineConfig({
   integrations: [
     starlight({
-      title: 'Sentry Build',
+      title: 'Fixing Your Frontend',
       logo: {
         src: './src/assets/placeholder.svg',
         replacesTitle: true,
@@ -30,22 +30,22 @@ export default defineConfig({
           label: 'Workshop',
           items: [
             { label: 'Quickstart', slug: 'quickstart' },
-            { label: 'Getting Started with Sentry', slug: 'getting-started' },
+            { label: 'Setting Up Performance & Error Monitoring', slug: 'getting-started' },
             {
-              label: 'Broken Academy Single Sign On (Tracing, Logs, Seer)',
-              slug: 'troubleshooting-auth',
+              label: 'Optimizing Performance with Web Vitals',
+              slug: 'optimizing-web-vitals',
             },
             {
-              label: 'Solving Broken Search (Sentry MCP, Seer)',
-              slug: 'fixing-course-search',
+              label: 'Distributed Tracing & Backend Performance',
+              slug: 'distributed-tracing',
             },
             {
-              label: 'Debugging AI Implementations (AI Agentic Monitoring)',
-              slug: 'debugging-ai-agent-monitoring',
+              label: 'Session Replay & Production Monitoring',
+              slug: 'session-replay-alerts',
             },
             {
-              label: 'Taking apart new features (Sentry PR Review)',
-              slug: 'new-feature-pr-review',
+              label: 'Production Readiness & Code Quality',
+              slug: 'production-readiness',
             },
           ],
         },
@@ -60,6 +60,10 @@ export default defineConfig({
             {
               label: 'Node SDK',
               link: 'https://docs.sentry.io/platforms/javascript/guides/node/',
+            },
+            {
+              label: 'Web Vitals Guide',
+              link: 'https://web.dev/vitals/',
             },
           ],
         },

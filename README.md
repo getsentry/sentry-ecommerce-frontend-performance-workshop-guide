@@ -35,8 +35,8 @@ The workshop content is organized into 4 comprehensive modules:
 
 ```bash
 # Clone the repository
-git clone https://github.com/getsentry/sentry-build-ai-workshop-guide
-cd sentry-build-ai-workshop-guide
+git clone https://github.com/getsentry/sentry-ecommerce-frontend-performance-workshop-guide
+cd sentry-ecommerce-frontend-performance-workshop-guide
 
 # Install dependencies
 pnpm install

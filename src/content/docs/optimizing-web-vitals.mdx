@@ -1,0 +1,456 @@
+---
+title: Optimizing Web Vitals
+description: Fix critical frontend performance issues affecting LCP, CLS, and TTFB using Sentry's performance monitoring
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import ScaledImage from '../../components/ScaledImage.astro';
+
+Your e-commerce store is ready for the holiday rush, but performance testing reveals problems: images loading slowly, layout shifts frustrating users, and render-blocking API calls delaying page loads. These issues directly impact Web Vitals scores - and conversion rates. Let's use Sentry to identify and fix them.
+
+## Learning Objectives
+
+By the end of this module, you will:
+
+- Understand how LCP, CLS, and TTFB impact e-commerce conversions
+- Fix slow-loading images causing poor LCP scores
+- Eliminate layout shifts from conditional banners using Sentry tags
+- Resolve render-blocking API calls with skeleton screens
+- Use Sentry's Web Vitals dashboard to measure improvements
+
+:::note[Why Web Vitals Matter]
+Google's research shows that sites with good Core Web Vitals scores have **24% lower bounce rates**. For e-commerce, every 100ms improvement in LCP can increase conversion by 1%.
+:::
+
+## Understanding Core Web Vitals
+
+Sentry tracks three critical Web Vitals metrics:
+
+- **LCP (Largest Contentful Paint)**: How long until the main content loads
+  - **Good**: < 2.5s | **Needs Improvement**: 2.5-4s | **Poor**: > 4s
+
+- **CLS (Cumulative Layout Shift)**: How much content moves around while loading
+  - **Good**: < 0.1 | **Needs Improvement**: 0.1-0.25 | **Poor**: > 0.25
+
+- **TTFB (Time to First Byte)**: How quickly the server responds
+  - **Good**: < 800ms | **Needs Improvement**: 800-1800ms | **Poor**: > 1800ms
+
+Let's fix three common issues affecting these metrics.
+
+## Issue #1: Slow Loading Images (LCP)
+
+Your homepage displays a grid of product images, but they're loading after the cards render, causing poor LCP scores and layout shifts.
+
+### Identifying the Problem
+
+<Steps>
+
+1. **Navigate to the homepage**
+
+   Open [http://localhost:5173](http://localhost:5173) and watch the images load. Notice the delay?
+
+2. **Check LCP in Sentry**
+
+   - Go to your frontend project in Sentry
+   - Navigate to **Performance** → **Web Vitals**
+   - Click on **LCP**
+   - Filter by page: `/` (homepage)
+   - You'll see LCP scores in the "Poor" range (likely > 4s)
+
+   {/* TODO: Add screenshot of Sentry Web Vitals dashboard showing poor LCP */}
+
+3. **View a specific transaction**
+
+   - Click into a transaction with poor LCP
+   - Look at the waterfall to see when images start loading
+   - You'll see images loading late in the page lifecycle
+
+</Steps>
+
+### The Fix: Image Optimization
+
+<Steps>
+
+1. **Add proper image sizing and lazy loading**
+
+   Open `apps/web/src/components/ProductCard.tsx` and update the image:
+
+   ```tsx
+   <img
+     src={product.imageUrl}
+     alt={product.name}
+     width={300}
+     height={300}
+     loading="eager"  // For above-the-fold images
+     decoding="async"
+     style={{ aspectRatio: '1/1' }}
+   />
+   ```
+
+   For images below the fold, use `loading="lazy"`.
+
+2. **Add image preloading for critical images**
+
+   In `apps/web/index.html`, add preload hints for hero images:
+
+   ```html
+   <head>
+     <!-- ... other tags ... -->
+     <link rel="preload" as="image" href="/hero-image.jpg" />
+   </head>
+   ```
+
+3. **Serve properly sized images**
+
+   Ensure your API returns appropriately sized images. In your backend, you might add image resizing or use a CDN with automatic image optimization.
+
+   ```typescript
+   // Example: Add query params for image size
+   const imageUrl = `${baseUrl}/images/${product.id}?w=300&h=300`;
+   ```
+
+4. **Test the improvement**
+
+   - Reload the homepage
+   - Go back to Sentry → **Web Vitals** → **LCP**
+   - You should see LCP improve from > 4s to < 2.5s ✅
+
+   {/* TODO: Add screenshot of improved LCP scores in Sentry */}
+
+</Steps>
+
+:::tip[Image Optimization Quick Wins]
+- Use modern image formats (WebP, AVIF)
+- Set explicit `width` and `height` attributes
+- Use `loading="eager"` for above-the-fold images
+- Implement a CDN with automatic image optimization
+:::
+
+## Issue #2: Banner Layout Shift (CLS)
+
+Your site shows a 10% coupon banner, but only after checking if the user is authenticated. This causes a layout shift as the banner appears after the page loads. Worse, you can't tell which users are affected most.
+
+### Identifying the Problem with Sentry Tags
+
+<Steps>
+
+1. **Check CLS in Sentry**
+
+   - Navigate to **Performance** → **Web Vitals** → **CLS**
+   - You'll see CLS scores in the "Needs Improvement" or "Poor" range
+   - But which users are affected? Let's find out.
+
+   {/* TODO: Add screenshot of CLS scores before tagging */}
+
+2. **Add Sentry tags to track banner rendering**
+
+   Open `apps/web/src/components/PromoBanner.tsx`:
+
+   ```tsx
+   import * as Sentry from '@sentry/react';
+   import { useAuth } from '../hooks/useAuth';
+
+   export default function PromoBanner() {
+     const { isAuthenticated, isLoading } = useAuth();
+
+     useEffect(() => {
+       if (!isLoading) {
+         // Tag transactions based on banner state
+         Sentry.setTag('banner.rendered', isAuthenticated ? 'no' : 'yes');
+         Sentry.setTag('user.authenticated', isAuthenticated);
+       }
+     }, [isAuthenticated, isLoading]);
+
+     if (isLoading) return null;
+
+     if (isAuthenticated) {
+       return null; // No banner for authenticated users
+     }
+
+     return (
+       <div className="promo-banner">
+         🎉 New Customer? Get 10% off your first order! Code: WELCOME10
+       </div>
+     );
+   }
+   ```
+
+3. **Filter CLS by banner state**
+
+   - Go back to Sentry → **Web Vitals** → **CLS**
+   - Use the search bar to filter: `banner.rendered:yes`
+   - Compare CLS scores for `banner.rendered:yes` vs `banner.rendered:no`
+   - You'll see **unauthenticated users have significantly worse CLS** ✅
+
+   {/* TODO: Add screenshot of CLS filtered by banner.rendered tag */}
+
+</Steps>
+
+### The Fix: Reserve Space for the Banner
+
+<Steps>
+
+1. **Add a placeholder with fixed height**
+
+   Update the banner component to always reserve space:
+
+   ```tsx
+   export default function PromoBanner() {
+     const { isAuthenticated, isLoading } = useAuth();
+
+     useEffect(() => {
+       if (!isLoading) {
+         Sentry.setTag('banner.rendered', isAuthenticated ? 'no' : 'yes');
+       }
+     }, [isAuthenticated, isLoading]);
+
+     return (
+       <div className="promo-banner-container" style={{ minHeight: '48px' }}>
+         {!isLoading && !isAuthenticated && (
+           <div className="promo-banner">
+             🎉 New Customer? Get 10% off your first order! Code: WELCOME10
+           </div>
+         )}
+       </div>
+     );
+   }
+   ```
+
+2. **Test the improvement**
+
+   - Reload the homepage (logged out)
+   - Watch the banner area - it should no longer shift
+   - Check Sentry → **CLS** with filter `banner.rendered:yes`
+   - CLS scores should improve dramatically (< 0.1) ✅
+
+   {/* TODO: Add screenshot of improved CLS scores */}
+
+</Steps>
+
+:::tip[Using Sentry Tags Effectively]
+Tags like `banner.rendered` let you slice performance data by user state, feature flags, A/B tests, or any custom dimension. Use them liberally to understand which user segments experience performance issues.
+:::
+
+## Issue #3: Render-Blocking Sale API (TTFB)
+
+Your "On Sale" page makes an API call to fetch sale items before rendering anything. This blocks the entire page load, causing poor TTFB and terrible perceived performance.
+
+### Identifying the Problem
+
+<Steps>
+
+1. **Navigate to the sale page**
+
+   Go to [http://localhost:5173/sale](http://localhost:5173/sale)
+
+   Notice the blank screen while the API loads? That's the problem.
+
+2. **Check TTFB in Sentry**
+
+   - Navigate to **Performance** → **Web Vitals** → **TTFB**
+   - Filter by page: `/sale`
+   - TTFB is likely in the "Poor" range (> 1800ms)
+
+   {/* TODO: Add screenshot of poor TTFB scores */}
+
+3. **View the transaction waterfall**
+
+   - Click into a transaction
+   - You'll see the API call blocking all rendering
+   - The `GET /api/products/sale` call takes 2-3 seconds
+
+   {/* TODO: Add screenshot of waterfall showing blocking API call */}
+
+</Steps>
+
+### The Fix: Skeleton Screen + Non-Blocking Load
+
+<Steps>
+
+1. **Update the Sale page component**
+
+   Open `apps/web/src/pages/SalePage.tsx`:
+
+   **Before (render-blocking):**
+   ```tsx
+   export default function SalePage() {
+     const [products, setProducts] = useState(null);
+
+     useEffect(() => {
+       fetchSaleProducts().then(setProducts);
+     }, []);
+
+     if (!products) {
+       return null; // ❌ Blocks rendering
+     }
+
+     return <ProductGrid products={products} />;
+   }
+   ```
+
+   **After (skeleton screen):**
+   ```tsx
+   export default function SalePage() {
+     const [products, setProducts] = useState(null);
+     const [loading, setLoading] = useState(true);
+
+     useEffect(() => {
+       fetchSaleProducts()
+         .then(setProducts)
+         .finally(() => setLoading(false));
+     }, []);
+
+     return (
+       <div className="sale-page">
+         <h1>Holiday Sale - Up to 50% Off</h1>
+
+         {loading ? (
+           <ProductGridSkeleton count={12} /> // ✅ Show immediately
+         ) : (
+           <ProductGrid products={products} />
+         )}
+       </div>
+     );
+   }
+   ```
+
+2. **Create the skeleton component**
+
+   Create `apps/web/src/components/ProductGridSkeleton.tsx`:
+
+   ```tsx
+   export default function ProductGridSkeleton({ count = 12 }) {
+     return (
+       <div className="grid grid-cols-4 gap-4">
+         {Array.from({ length: count }).map((_, i) => (
+           <div key={i} className="skeleton-card">
+             <div className="skeleton-image" />
+             <div className="skeleton-text" />
+             <div className="skeleton-text-short" />
+           </div>
+         ))}
+       </div>
+     );
+   }
+   ```
+
+   Add corresponding CSS for skeleton animations.
+
+3. **Test the improvement**
+
+   - Reload the sale page
+   - You should see the skeleton immediately, then products load in
+   - Check Sentry → **TTFB** for `/sale`
+   - TTFB should improve from > 1800ms to < 800ms ✅
+
+   {/* TODO: Add screenshot of improved TTFB scores */}
+
+4. **Add performance tracking**
+
+   Add a custom span to track perceived vs. actual load time:
+
+   ```tsx
+   useEffect(() => {
+     const span = Sentry.startInactiveSpan({
+       name: 'sale.products.load',
+       op: 'http.client',
+     });
+
+     fetchSaleProducts()
+       .then(setProducts)
+       .finally(() => {
+         span?.end();
+         setLoading(false);
+       });
+   }, []);
+   ```
+
+</Steps>
+
+:::tip[Skeleton Screen Best Practices]
+- Match the skeleton layout to the actual content
+- Use subtle animations (pulse/shimmer) to indicate loading
+- Show skeletons immediately - don't wait for any data
+- Reserve space for all content to avoid layout shifts
+:::
+
+## Measuring Overall Improvement
+
+Let's verify our fixes improved the overall Web Vitals scores.
+
+<Steps>
+
+1. **Check the Web Vitals dashboard**
+
+   - Navigate to **Performance** → **Web Vitals**
+   - View the summary for all three metrics:
+     - **LCP**: Should be < 2.5s (was > 4s)
+     - **CLS**: Should be < 0.1 (was > 0.25)
+     - **TTFB**: Should be < 800ms (was > 1800ms)
+
+   {/* TODO: Add screenshot of overall Web Vitals improvement dashboard */}
+
+2. **Create a Web Vitals alert**
+
+   You already set up an LCP alert in the previous module. Add CLS and TTFB alerts:
+
+   - **CLS Alert**: `p75(measurements.cls)` > 0.1
+   - **TTFB Alert**: `p75(measurements.ttfb)` > 800ms
+
+3. **View performance by page**
+
+   Create a custom dashboard widget:
+   - Metric: `p75(measurements.lcp)`
+   - Group by: `transaction`
+   - See which pages still need optimization
+
+</Steps>
+
+## Using Sentry's Seer AI for Suggestions
+
+Sentry's AI can analyze your Web Vitals data and suggest further optimizations.
+
+<Steps>
+
+1. **Access Seer from a transaction**
+
+   - Find a transaction with poor Web Vitals
+   - Click **"Ask Seer"**
+
+2. **Review AI suggestions**
+
+   Seer might suggest:
+   - CDN configuration for static assets
+   - Database indexing for the sale endpoint
+   - Further image optimization opportunities
+   - Code splitting to reduce bundle size
+
+</Steps>
+
+## Key Takeaways
+
+- **LCP**: Optimize images with proper sizing, lazy loading, and preloading
+- **CLS**: Reserve space for dynamic content (banners, ads) to prevent shifts
+- **TTFB**: Use skeleton screens instead of blocking on API calls
+- **Sentry tags**: Filter Web Vitals by user state, features, or any custom dimension
+- **Quick wins**: Fix the biggest offenders first - usually images and render-blocking requests
+
+:::note[What's Next?]
+We've fixed the immediate frontend issues, but some performance problems are rooted in the backend. In the next module, we'll use distributed tracing to identify backend bottlenecks like N+1 queries and implement fixes.
+:::
+
+## Production Checklist
+
+Before deploying these changes:
+
+- [ ] Images have explicit `width` and `height` attributes
+- [ ] Critical images use `loading="eager"`, others use `loading="lazy"`
+- [ ] Conditional UI elements (banners) reserve space to prevent CLS
+- [ ] Sentry tags added for filtering Web Vitals by user state
+- [ ] Skeleton screens implemented for slow-loading content
+- [ ] Web Vitals alerts configured (LCP, CLS, TTFB)
+- [ ] Tested on real devices and slow network connections
+
+---
+
+**Next up:** We'll trace frontend slowness to backend bottlenecks and fix N+1 queries using distributed tracing.

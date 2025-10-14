@@ -14,13 +14,14 @@ Before you begin, ensure you have the following installed:
 
 - [Git](https://git-scm.com/downloads)
 - [Node.js](https://nodejs.org/) (version 18 or higher)
+- [pnpm](https://pnpm.io/) (recommended package manager)
 
-Additionally, you'll need a Sentry account to follow along with the tracing and monitoring portions of this workshop:
+Additionally, you'll need a Sentry account to follow along with the performance and error monitoring portions of this workshop:
 
 - [Sign up for a free Sentry.io](https://sentry.io/signup/) if you don't already have an account
 
 :::tip[Pro Tip]
-We recommend setting up two separate projects in your Sentry account: one for the frontend (React) and one for the backend (Node.js). This allows you to efficiently monitor each project more clearly. We'll be configuring our SDKs in the workshop, so all you need to do is create the new projects and have your DSN's handy.
+We recommend setting up two separate projects in your Sentry account: one for the frontend (React) and one for the backend (Node.js). This allows you to efficiently monitor each project more clearly. We'll be configuring our SDKs in the workshop, so all you need to do is create the new projects and have your DSNs handy.
 :::
 
 ## Setup Instructions
@@ -28,79 +29,83 @@ We recommend setting up two separate projects in your Sentry account: one for th
 <Steps>
 1. **Fork the repository**
 
-     Go to [https://github.com/getsentry/sentry-build-ai-workshop](https://github.com/getsentry/sentry-build-ai-workshop) and click the "Fork" button in the top right. We'll do this instead of simply cloning the repo because we'll demo features of AI agent, Seer which can open PRs to fix code for us.
+     Go to [https://github.com/getsentry/sentry-ecommerce-frontend-performance-workshop-app](https://github.com/getsentry/sentry-ecommerce-frontend-performance-workshop-app) and click the "Fork" button in the top right. We'll fork instead of cloning so we can use Sentry's Seer AI to open PRs with performance fixes.
 
-     <ScaledImage src="/assets/img/repo-fork.png" alt="Forking the repository" />
-
-2. **Leave the fork network**
-
-   Go to the settings of your forked repo, scroll all the way down to the Danger Zone, click "Leave fork network", and follow the prompts to convert your forked repo into a standalone repo, all nice and isolated from the original.
-
-   <ScaledImage
-     src="/assets/img/leave-fork-network.png"
-     alt="Leaving the fork network"
-     size={75}
-   />
-
-3. **Then, clone your fork:**
+2. **Clone your fork into a directory we're going to call `unborked`**
 
    ```bash
-   git clone https://github.com/<your-username>/sentry-build-ai-workshop.git
+   git clone https://github.com/<your-username>/sentry-ecommerce-frontend-performance-workshop-app.git unborked
+   cd unborked
    ```
 
-4. **Navigate to the project directory**
+3. **Install dependencies**
 
    ```bash
-   cd sentry-build-ai-workshop
+   pnpm install
    ```
 
-5. **Install dependencies with PNPM**
+4. **Set up environment variables**
+
+   The project uses a turborepo monorepo structure with `apps/web` (frontend) and `apps/api` (backend). Each has an `.env.example` file you can copy:
+
+   #### Frontend (`apps/web/.env`):
 
    ```bash
-   pnpm i
+   cp apps/web/.env.example apps/web/.env
    ```
 
-6. **Set up environment variables**
+   Edit `apps/web/.env` and configure (we'll add Sentry DSN later):
 
    ```bash
-   touch apps/frontend/.env
-   echo "VITE_API_URL=http://localhost:3001/api" >> apps/frontend/.env
+   VITE_API_BASE_URL=http://localhost:3001
    ```
 
-   ```bash
-   touch apps/server/.env
-   echo "PORT=3001" >> apps/server/.env
-   cd apps/server
+   #### Backend (`apps/api/.env`):
+
+   **Automatic Database setup**
+
+   If you want to spin up a temporary Postgres database using Neon, you can run the following command from the root of the repo:
+
+   ```baseh
+   pnpm db:new
    ```
 
-7. **Database Setup**
+   This will generate a `.env` file inside `apps/api` with a `DATABASE_URL` environment variable. You can claim it to your account later if you want, but it's a good playground to have for this workshop.
 
-   We'll be using [NeonDB](https://neon.new/) for this workshop, so we need to set up the database. Navigate to the `apps/server` directory and run the following commands and select the defaults when prompted:
+   **Manual DB Setup**
 
    ```bash
-   pnpx neondb -y
+   cp apps/api/.env.example apps/api/.env
    ```
 
-8. **Seed the Database**
+   Edit `apps/api/.env` and add your database connection string (use a local PostgreSQL instance or a hosted service like [Neon](https://neon.tech) or [Supabase](https://supabase.com)):
 
    ```bash
-   pnpm db:generate
-   pnpm db:push
-   pnpm db:seed
+   DATABASE_URL=postgresql://user:password@localhost:5432/unborked
    ```
 
-9. **Start the Project (from the root)**
+5. **Run database migrations and seed data**
+
+   From the root `unborked` directory:
 
    ```bash
-   cd ../..
+   pnpm migrate
+   pnpm seed
+   ```
+
+6. **Start the development servers**
+
+   This single command starts both frontend and backend:
+
+   ```bash
    pnpm dev
    ```
 
-10. **Access the application project**
+7. **Access the application**
 
-    The project will now be running:
-    - with the frontend running on [http://localhost:5173](http://localhost:5173)
-    - with the backend API running on [http://localhost:3001](http://localhost:3001)
+   The project will now be running:
+   - Frontend: [http://localhost:5173](http://localhost:5173)
+   - Backend API: [http://localhost:3001](http://localhost:3001)
 
 </Steps>
 
@@ -108,8 +113,8 @@ We recommend setting up two separate projects in your Sentry account: one for th
 
 Once you've completed the setup, you'll have access to:
 
-- A Vite-powered React frontend running at [http://localhost:5173](http://localhost:5173)
-- A Node.js backend API running at [http://localhost:3001](http://localhost:3001)
-- Full-stack JavaScript application ready for Sentry instrumentation
+- **E-commerce Frontend**: Vite + React + TypeScript application with product browsing, cart, and checkout
+- **Backend API**: Node.js + Express with Drizzle ORM connected to PostgreSQL
+- **Full-Stack Application**: Ready for Sentry performance and error monitoring instrumentation
 
-This setup will allow you to progress through the workshop and start implementing Sentry. This workshop will take you through setting up **Error Monitoring, Logging, Tracing**, and building visualizations in dashboards!
+This setup will allow you to progress through the workshop and start implementing Sentry. This workshop will take you through setting up **Performance Monitoring, Web Vitals tracking, Error Monitoring, Session Replay, Distributed Tracing**, and building production-ready dashboards and alerts!

@@ -4,69 +4,83 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an Astro Starlight documentation site for the Sentry Build Academy workshop. The site teaches developers how to implement comprehensive observability with Sentry in fullstack JavaScript applications using Vite (frontend) and Bun (backend).
+This is an Astro Starlight documentation site for the "Fixing Your Frontend: Performance Monitoring Best Practices" workshop. The site teaches developers how to implement comprehensive performance and error monitoring in e-commerce applications using Sentry, with a focus on preparing for high-traffic events like Black Friday.
 
 ## Development Commands
 
-- `npm run dev` or `npm start` - Start development server (localhost:4321)
-- `npm run build` - Build for production (outputs to ./dist/)
-- `npm run preview` - Preview production build locally
-- `npm install` - Install dependencies
+- `pnpm install` - Install dependencies (pnpm is the required package manager)
+- `pnpm dev` or `pnpm start` - Start development server at localhost:4321
+- `pnpm build` - Build for production (outputs to ./dist/)
+- `pnpm preview` - Preview production build locally
+- `pnpm format` - Format code with Prettier
+- `pnpm format:check` - Check code formatting
+- `pnpm lint` - Lint code
+- `pnpm lint:fix` - Auto-fix linting issues
 
 ## Architecture
 
-**Framework**: Astro with Starlight integration for documentation theming
-**Content**: MDX files in `/src/content/docs/` with structured workshop modules
-**Deployment**: Vercel adapter configured for production deployment
+**Framework**: Astro 5.11+ with Starlight integration for documentation theming
+**Content**: MDX files in `/src/content/docs/` with workshop modules
+**Deployment**: Vercel adapter with image service and asset handling
+**Package Manager**: pnpm 10.18+ (enforced via packageManager field)
 
 ## Workshop Content Structure
 
-The workshop is organized into 4 main topic areas focused on fullstack JavaScript performance and debugging:
+The workshop is organized into 5 main modules focused on frontend performance monitoring:
 
-1. **Getting Started with Tracing and Logs** (`/tracing-logs/`)
-   - Setting up Sentry in Vite React frontend
-   - Configuring Sentry in Bun backend
-   - Understanding distributed tracing concepts
-   - Creating basic spans and structured logging
+1. **Setting Up Performance & Error Monitoring** (`getting-started.mdx`)
+   - Sentry SDK setup for React frontend and Node.js backend
+   - Performance monitoring with Web Vitals tracking
+   - Session Replay and error monitoring configuration
+   - Basic alert rules setup
 
-2. **Instrumenting Span Attributes, Metrics, and Alerts** (`/instrumentation/`)
-   - Adding custom attributes to spans
-   - Implementing custom metrics for business KPIs
-   - Setting up performance and error alerts
-   - Advanced frontend and backend instrumentation patterns
+2. **Optimizing Performance with Web Vitals** (`optimizing-web-vitals.mdx`)
+   - Identifying performance bottlenecks using LCP, TTFB, INP
+   - Custom performance spans for business operations
+   - Database query optimization (indexing)
+   - Using Sentry's Seer AI for performance suggestions
 
-3. **Tracing for Database queries, Queues, and Caches** (`/database-queues-caches/`)
-   - Database query instrumentation with detailed performance metrics
-   - Background job and queue monitoring
-   - Cache hit rate and performance tracking
-   - Repository pattern implementation with tracing
+3. **Distributed Tracing & Backend Performance** (`distributed-tracing.mdx`)
+   - Linking frontend slowness to backend issues
+   - Identifying and fixing N+1 query problems
+   - Implementing caching strategies
+   - Request waterfall analysis
 
-4. **Visualizing Traces in Sentry** (`/visualizing-traces/`)
-   - Using Sentry's waterfall charts and trace analysis
-   - Creating custom dashboards and alerts
-   - Performance debugging workflows
-   - Advanced filtering and query techniques
+4. **Session Replay & Production Monitoring** (`session-replay-alerts.mdx`)
+   - Debugging user experience issues with Session Replay
+   - Privacy configuration (masking sensitive data)
+   - Advanced alert rules for Web Vitals and business metrics
+   - Creating monitoring dashboards
+
+5. **Production Readiness & Code Quality** (`production-readiness.mdx`)
+   - Advanced alerting strategies
+   - Audience-specific dashboards
+   - Sentry Prevent AI for code review
+   - On-call rotation and incident response
 
 ## Technology Focus
 
-The workshop specifically covers:
+The workshop covers:
 
-- **Frontend**: Vite + React with Sentry browser SDK
-- **Backend**: Bun runtime with Sentry Bun SDK
-- **Database**: SQLite with custom instrumentation patterns
-- **Observability**: Distributed tracing, custom metrics, structured logging
-- **Performance**: End-to-end monitoring and optimization techniques
+- **Frontend**: Vite + React + TypeScript with Sentry React SDK
+- **Backend**: Node.js + Express with Sentry Node SDK
+- **Database**: PostgreSQL with Drizzle ORM
+- **Target Application**: E-commerce store (`sergical/unborked` repo)
+- **Focus Areas**: Web Vitals, distributed tracing, Session Replay, performance optimization
+- **AI Tools**: Sentry Seer for RCA and fix suggestions, Prevent AI for code review
 
 ## Key Configuration Files
 
-- `astro.config.mjs` - Starlight theme with updated navigation for JavaScript workshop
-- `src/content.config.ts` - Content collections schema using Zod validation
-- Custom CSS in `/src/styles/` for Sentry-specific styling
-- External links configured for JavaScript/Bun Sentry documentation
+- `astro.config.mjs` - Starlight theme with workshop navigation and Vercel adapter
+- `src/content.config.ts` - Content collections using Astro's docsLoader and docsSchema
+- `sentry.client.config.js` / `sentry.server.config.js` - Sentry configuration for the docs site
+- Custom CSS in `/src/styles/custom.css` for Sentry-specific styling
 
 ## Content Guidelines
 
-- All examples use modern JavaScript (ES modules, async/await)
-- Code samples focus on Vite and Bun-specific implementations
-- Workshop assumes familiarity with React and Node.js concepts
-- Emphasis on practical, production-ready instrumentation patterns
+- All workshop content is in MDX format in `/src/content/docs/`
+- Supports Starlight components: Steps, Card, CardGrid, and callout blocks (:::tip, :::note, :::caution)
+- Code examples target the `unborked` e-commerce application
+- Performance-focused scenarios (holiday traffic, high load)
+- Assumes participants are new to performance monitoring
+- Images stored in `/src/assets/img/` for screenshots and diagrams

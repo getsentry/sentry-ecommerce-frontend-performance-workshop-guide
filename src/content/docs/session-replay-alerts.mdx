@@ -1,0 +1,536 @@
+---
+title: Debugging User Experience with Session Replay & Logs
+description: Use Session Replay and Logs to spot user frustration patterns, abandoned checkouts, and UX issues that don't throw errors
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import ScaledImage from '../../components/ScaledImage.astro';
+
+Your application isn't throwing errors. Performance metrics look good. But your checkout conversion rate just dropped from 65% to 45% overnight. What's wrong? This is where Session Replay becomes invaluable - **when things don't technically break, but users are clearly struggling**.
+
+## Learning Objectives
+
+By the end of this module, you will:
+
+- Use Session Replay to identify user frustration patterns (rage clicks, dead clicks)
+- Spot checkout abandonment patterns and understand why users leave
+- Combine Session Replay with console logs for deeper context
+- Filter replays by user behavior, not just errors
+- Fix UX issues that hurt conversions but don't cause technical failures
+
+:::note[When Things Don't Break]
+Most conversion-killing issues aren't bugs - they're UX problems. Users can't find buttons, forms are confusing, loading states are missing. Session Replay shows you what users experience, even when everything "works."
+:::
+
+## The Problem: Falling Conversion Rates
+
+You're monitoring your site and notice:
+
+- **Checkout abandonment**: Up from 35% to 55%
+- **Error rate**: Normal (< 0.5%)
+- **Performance**: Good (LCP < 2s, no slow endpoints)
+- **User complaints**: "Checkout isn't working" (but no errors in logs)
+
+Without Session Replay, you'd be guessing. With it, you can **watch exactly what frustrated users are doing**.
+
+## Discovering User Frustration Patterns
+
+Sentry automatically detects user frustration signals. Let's find them.
+
+<Steps>
+
+1. **Navigate to Session Replays**
+
+   - Open Sentry (Frontend Project)
+   - Go to **Replays** in the left sidebar
+
+2. **Filter by rage clicks**
+
+   Rage clicks occur when users click the same element repeatedly (3+ times in 5 seconds), usually because something isn't responding.
+
+   Use this filter:
+
+   ```
+   click.tag:"button"
+   click.selector:*checkout*
+   rage_click_count:>0
+   ```
+
+   {/* TODO: Add screenshot of Session Replays filtered by rage clicks */}
+
+3. **Sort by rage click count**
+
+   Click the "Rage Clicks" column to sort by most frustrated users first.
+
+   You'll see sessions with 5, 10, even 20+ rage clicks. These users are seriously frustrated.
+
+</Steps>
+
+## Watching a Frustrated User
+
+Let's watch one of these replays to understand what's happening.
+
+<Steps>
+
+1. **Click into a high rage-click session**
+
+   Choose a replay with 10+ rage clicks and checkout abandonment.
+
+2. **Watch the replay**
+
+   Press play and watch what the user experienced. You'll likely see:
+
+   - User fills out checkout form (name, email, card details)
+   - Clicks "Place Order" button
+   - **Clicks again... and again... and again** (10+ times!)
+   - No visual feedback (no loading spinner, no state change)
+   - Eventually gives up and leaves
+
+   {/* TODO: Add screenshot of Session Replay showing rage clicks on checkout button */}
+
+3. **Check the console logs**
+
+   Look at the console tab in the replay. You might see:
+
+   ```
+   [DEBUG] Checkout button clicked
+   [DEBUG] Validating payment form...
+   [ERROR] Card number validation failed: Invalid format
+   [DEBUG] Checkout button clicked
+   [ERROR] Card number validation failed: Invalid format
+   ...
+   ```
+
+   **Aha!** The button isn't working because of a validation error, but:
+   - The error isn't shown to the user
+   - The button doesn't disable or show loading state
+   - User has no idea what's wrong
+
+   {/* TODO: Add screenshot of console logs showing validation errors */}
+
+4. **Check the Network tab**
+
+   Look at network requests. You'll see:
+   - No POST request to `/api/checkout` (validation fails before API call)
+   - Multiple failed validation attempts
+   - User never got feedback about what was wrong
+
+</Steps>
+
+## The Root Cause: Hidden Validation Errors
+
+The checkout button has validation, but doesn't show errors to users. Let's fix it.
+
+<Steps>
+
+1. **Add validation error display**
+
+   Open `apps/web/src/components/CheckoutForm.tsx`:
+
+   ```tsx
+   import { useState } from 'react';
+   import * as Sentry from '@sentry/react';
+
+   export default function CheckoutForm() {
+     const [isProcessing, setIsProcessing] = useState(false);
+     const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+     const handleSubmit = async (e: React.FormEvent) => {
+       e.preventDefault();
+
+       // Clear previous errors
+       setValidationErrors([]);
+
+       // Validate form
+       const errors = validateCheckoutForm(formData);
+
+       if (errors.length > 0) {
+         setValidationErrors(errors);
+
+         // Track validation failures with span attributes
+         const span = Sentry.getActiveSpan();
+         if (span) {
+           span.setAttributes({
+             'checkout.validation_failed': true,
+             'checkout.validation_error_count': errors.length,
+             'checkout.validation_errors': errors.join(', '),
+           });
+         }
+
+         // Log validation failures to Sentry
+         Sentry.logger.warn('Checkout validation failed', {
+           errors,
+           formData: { ...formData, cardNumber: '****' }, // Mask sensitive data
+         });
+
+         return; // Don't proceed
+       }
+
+       // Validation passed, proceed with checkout
+       setIsProcessing(true);
+
+       const span = Sentry.getActiveSpan();
+       if (span) {
+         span.setAttribute('checkout.validation_passed', true);
+       }
+
+       Sentry.logger.info('Checkout validation passed, processing payment');
+
+       // ... rest of checkout logic
+     };
+
+     return (
+       <form onSubmit={handleSubmit}>
+         {/* Show validation errors to user */}
+         {validationErrors.length > 0 && (
+           <div className="validation-errors">
+             <p className="error-title">Please fix the following errors:</p>
+             <ul>
+               {validationErrors.map((error, i) => (
+                 <li key={i}>{error}</li>
+               ))}
+             </ul>
+           </div>
+         )}
+
+         {/* Form fields */}
+         <input name="cardNumber" placeholder="Card Number" />
+         <input name="cvv" placeholder="CVV" />
+
+         <button
+           type="submit"
+           disabled={isProcessing}
+           className={isProcessing ? 'loading' : ''}
+         >
+           {isProcessing ? (
+             <>
+               <span className="spinner" />
+               Processing...
+             </>
+           ) : (
+             'Place Order'
+           )}
+         </button>
+       </form>
+     );
+   }
+   ```
+
+2. **Add clear loading state**
+
+   The button now:
+   - Shows errors clearly (red text, specific messages)
+   - Disables while processing (prevents rage clicks)
+   - Shows loading spinner for visual feedback
+
+3. **Track validation patterns**
+
+   With span attributes, you can now analyze:
+   - How often validation fails (`checkout.validation_failed:true`)
+   - Average number of validation errors per session
+   - Which specific validation errors occur most frequently
+   - Patterns in form abandonment correlated with validation issues
+
+</Steps>
+
+## Finding Abandoned Checkouts
+
+Let's find sessions where users got to checkout but never completed it.
+
+<Steps>
+
+1. **Filter by checkout page + no purchase**
+
+   In the Replays view, use:
+
+   ```
+   url:*/checkout*
+   NOT url:*/order-confirmation*
+   session.duration:>30s
+   ```
+
+   This finds users who:
+   - Visited the checkout page
+   - Stayed for at least 30 seconds (engaged)
+   - Never reached the order confirmation page
+
+   {/* TODO: Add screenshot of replays filtered for abandoned checkouts */}
+
+2. **Watch several abandoned checkout replays**
+
+   Click into 3-5 different sessions and watch for patterns.
+
+   Common abandonment reasons you might discover:
+   - **Unexpected shipping costs** (users see total at checkout, leave immediately)
+   - **Required account creation** (users want guest checkout)
+   - **Confusing form layout** (can't find where to enter promo code)
+   - **Performance issues** (slow loading, users get impatient)
+   - **Dead clicks** (clicking things that don't work)
+
+3. **Look at the timeline heatmap**
+
+   Sentry shows where users spend time in the replay:
+   - Long pauses = confusion or frustration
+   - Rapid clicks on non-interactive elements = trying to find something
+   - Mouse movement patterns = looking for something they can't find
+
+   {/* TODO: Add screenshot of replay timeline showing user hesitation patterns */}
+
+</Steps>
+
+## Discovering Dead Clicks
+
+Dead clicks occur when users click elements that look clickable but aren't. This is a major UX issue.
+
+<Steps>
+
+1. **Filter by dead clicks**
+
+   ```
+   dead_click_count:>2
+   url:*/checkout*
+   ```
+
+2. **Watch a dead click replay**
+
+   You might discover:
+   - Users clicking on product images (expecting a larger view)
+   - Clicking on disabled form fields (not obviously disabled)
+   - Clicking on text that looks like links but aren't
+   - Clicking on the promo code field (but there's no way to apply it)
+
+   {/* TODO: Add screenshot showing dead clicks on non-interactive elements */}
+
+3. **Fix the UX issue**
+
+   Example: Users keep clicking "Apply" next to the promo code field, but there's no button there.
+
+   ```tsx
+   // Before: Promo code applies automatically on blur
+   <input
+     name="promoCode"
+     onBlur={handleApplyPromo}
+     placeholder="Enter promo code"
+   />
+
+   // After: Add explicit Apply button
+   <div className="promo-code-field">
+     <input
+       name="promoCode"
+       placeholder="Enter promo code"
+     />
+     <button
+       type="button"
+       onClick={handleApplyPromo}
+       className="apply-button"
+     >
+       Apply
+     </button>
+   </div>
+   ```
+
+</Steps>
+
+## Combining Replay with Console Logs
+
+Session Replay captures console logs, giving you deeper context about what was happening during the session.
+
+<Steps>
+
+1. **Find sessions with console errors**
+
+   Even if your app doesn't "break," console errors might explain user frustration:
+
+   ```
+   console.error:*
+   url:*/checkout*
+   ```
+
+2. **Watch a replay with console errors**
+
+   You might see:
+   - Failed API requests (network issues, timeouts)
+   - JavaScript warnings (deprecated features, null values)
+   - Third-party script errors (payment gateway, analytics)
+
+   {/* TODO: Add screenshot showing console logs within a Session Replay */}
+
+3. **Example: Payment gateway timeout**
+
+   User clicks "Place Order," waits 30 seconds, sees no feedback, rage clicks, and leaves.
+
+   Console logs show:
+
+   ```
+   [DEBUG] Initializing payment gateway...
+   [DEBUG] Loading payment gateway SDK...
+   [ERROR] Payment gateway SDK failed to load: Timeout after 30s
+   [DEBUG] Checkout button clicked
+   [ERROR] Payment gateway not initialized
+   ```
+
+   **Fix**: Add better error handling and user feedback:
+
+   ```tsx
+   try {
+     await initializePaymentGateway();
+   } catch (error) {
+     Sentry.logger.error('Payment gateway initialization failed', { error });
+
+     setError(
+       'Unable to process payments right now. Please try again in a moment.'
+     );
+
+     // Fallback: Show customer support contact
+     setShowSupportContact(true);
+   }
+   ```
+
+</Steps>
+
+## Measuring the Impact
+
+After fixing these UX issues, let's measure the impact on conversions.
+
+<Steps>
+
+1. **Track checkout completion rate**
+
+   Add custom span attributes to measure funnel completion:
+
+   ```tsx
+   // When user views checkout page
+   const checkoutSpan = Sentry.startInactiveSpan({
+     name: 'checkout.started',
+     op: 'checkout.funnel',
+   });
+
+   if (checkoutSpan) {
+     checkoutSpan.setAttributes({
+       'checkout.stage': 'started',
+       'checkout.cart_value': cartTotal,
+       'checkout.item_count': cartItems.length,
+     });
+     checkoutSpan.end();
+   }
+
+   // When user completes order
+   const completionSpan = Sentry.startInactiveSpan({
+     name: 'checkout.completed',
+     op: 'checkout.funnel',
+   });
+
+   if (completionSpan) {
+     completionSpan.setAttributes({
+       'checkout.stage': 'completed',
+       'checkout.payment_method': paymentMethod,
+       'checkout.has_promo_code': !!promoCode,
+       'checkout.order_id': orderId,
+     });
+     completionSpan.end();
+   }
+   ```
+
+2. **Create a conversion dashboard**
+
+   In Sentry → **Dashboards** → **Create Dashboard**:
+
+   Add widgets for:
+   - **Checkout Started**: `count() where transaction:checkout.started`
+   - **Checkout Completed**: `count() where transaction:checkout.completed`
+   - **Conversion Rate**: Use calculated field `checkout.completed / checkout.started`
+   - **Rage Click Rate**: `count(replays) where rage_click_count > 0`
+   - **Dead Click Rate**: `count(replays) where dead_click_count > 0`
+   - **Checkout Abandonment by Stage**: Group by `checkout.stage` attribute
+
+   {/* TODO: Add screenshot of conversion rate dashboard */}
+
+3. **Compare before and after**
+
+   | Metric | Before Fixes | After Fixes | Improvement |
+   |--------|--------------|-------------|-------------|
+   | Conversion Rate | 45% | 63% | **+18%** ✅ |
+   | Rage Click Sessions | 28% | 5% | **-82%** ✅ |
+   | Dead Click Sessions | 15% | 3% | **-80%** ✅ |
+   | Avg. Checkout Duration | 4m 30s | 2m 15s | **-50%** ✅ |
+
+</Steps>
+
+## Privacy & Compliance
+
+When using Session Replay, always protect user privacy.
+
+<Steps>
+
+1. **Review your replay privacy settings**
+
+   In `apps/web/src/instrument.ts`, ensure sensitive data is masked:
+
+   ```typescript
+   Sentry.replayIntegration({
+     // Mask sensitive inputs
+     maskAllInputs: true,
+
+     // Block specific sensitive elements
+     blockSelector: [
+       '[name="cardNumber"]',
+       '[name="cvv"]',
+       '[name="password"]',
+       '[type="password"]',
+       '[autocomplete="cc-number"]',
+     ],
+
+     // Unmask non-sensitive text for debugging
+     unmask: [
+       '.product-name',
+       '.product-price',
+       '.error-message',
+     ],
+   }),
+   ```
+
+2. **Test privacy masking**
+
+   Complete a checkout and watch the replay:
+   - Card numbers: Should be `***`
+   - CVV: Should be `***`
+   - Passwords: Should be `***`
+   - Product names and prices: Should be visible (for debugging)
+
+3. **Document your replay practices**
+
+   Add to your privacy policy:
+   - What data is captured in replays
+   - How long replays are stored
+   - Who has access to replay data
+   - How sensitive data is masked
+
+</Steps>
+
+## Key Takeaways
+
+- **Session Replay reveals UX issues that don't throw errors** - rage clicks, dead clicks, user confusion
+- **Checkout abandonment patterns** show why users leave, even when everything "works"
+- **Console logs + Replay** provide full context about what users experienced
+- **Filtering by behavior** (rage clicks, dead clicks) is more valuable than filtering by errors
+- **Fixing UX issues** can improve conversions by 20-40% without touching performance
+
+:::note[What's Next?]
+You've now built a complete monitoring system: performance tracking, distributed tracing, and user behavior analysis. In the final module, we'll use Sentry's Seer AI to automatically diagnose issues and suggest fixes - even opening PRs for you.
+:::
+
+## Production Checklist
+
+Before relying on Session Replay for production monitoring:
+
+- [ ] Privacy settings configured (mask all sensitive inputs)
+- [ ] Sample rate set appropriately (10-20% for normal sessions)
+- [ ] Error sessions captured at 100%
+- [ ] Console logs enabled (`_experiments.enableLogs: true`)
+- [ ] Team trained on how to interpret replays
+- [ ] Dashboard created for conversion metrics
+- [ ] Privacy policy updated to mention session recording
+
+---
+
+**Next up:** We'll use Sentry's Seer AI to automatically detect issues, suggest fixes, and even open PRs with solutions.

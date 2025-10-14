@@ -1,0 +1,504 @@
+---
+title: Debugging with Seer AI
+description: Use Sentry's AI-powered debugging to get root cause analysis, fix suggestions, and automated PRs
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import ScaledImage from '../../components/ScaledImage.astro';
+
+You've been manually diagnosing performance issues, writing fixes, and optimizing code throughout this workshop. But what if AI could do the heavy lifting? Enter **Seer** - Sentry's AI debugger that analyzes issues, suggests fixes, and even opens PRs automatically.
+
+## Learning Objectives
+
+By the end of this module, you will:
+
+- Use Seer to get root cause analysis for performance issues
+- Get AI-suggested fixes for N+1 queries and performance bottlenecks
+- Have Seer automatically open PRs with fixes
+- Understand when to trust AI suggestions vs. manual review
+- Leverage Seer for ongoing performance optimization
+
+:::note[AI-Powered Debugging]
+Seer analyzes your traces, errors, and code to provide context-aware suggestions. It understands your specific codebase, not just generic patterns, making its recommendations highly actionable.
+:::
+
+## What is Seer?
+
+Seer is Sentry's AI debugging assistant that:
+
+- **Analyzes issues**: Understands traces, errors, and user impact
+- **Finds root causes**: Identifies N+1 queries, missing indexes, inefficient code
+- **Suggests fixes**: Provides code-level recommendations
+- **Opens PRs**: Automatically creates pull requests with fixes (if you want)
+- **Learns from your codebase**: Uses GitHub integration for context-aware suggestions
+
+## Prerequisites: GitHub Integration
+
+Before using Seer, ensure GitHub integration is set up (you did this in Module 1):
+
+<Steps>
+
+1. **Verify GitHub is connected**
+
+   - Go to **Organization Settings** → **Integrations** → **GitHub**
+   - Confirm your `unborked` repository is connected
+   - Verify Seer has access to your code
+
+2. **Enable AI features**
+
+   - Navigate to [Organization Settings](https://sentry.io/orgredirect/organizations/:orgslug/settings/#hideAiFeatures)
+   - Ensure **"Autofix"** and **"AI Insights"** are enabled
+
+</Steps>
+
+## Using Seer for Root Cause Analysis
+
+Let's use Seer to analyze the performance issues we've been fixing manually.
+
+### Scenario 1: The N+1 Query Problem
+
+Remember the sale API from Module 3 that had 101 database queries? Let's see what Seer would tell us.
+
+<Steps>
+
+1. **Find a slow transaction**
+
+   - Navigate to **Performance** in your backend project
+   - Find a `GET /api/products/sale` transaction from before the optimization
+   - Click into the transaction details
+
+   {/* TODO: Add screenshot of slow sale API transaction */}
+
+2. **Ask Seer for analysis**
+
+   Look for the **"Ask Seer"** or **"Get AI Insights"** button in the transaction view.
+
+   Click it to get Seer's analysis.
+
+   {/* TODO: Add screenshot of Seer AI button location */}
+
+3. **Review Seer's root cause analysis**
+
+   Seer will analyze the trace and provide insights like:
+
+   ```
+   🔍 Root Cause Analysis
+
+   **Performance Issue Detected: N+1 Query Pattern**
+
+   Your application is executing 101 database queries to fetch
+   sale products:
+   - 1 initial query to fetch 50 products
+   - 50 queries to fetch discount information (one per product)
+   - 50 queries to fetch inventory information (one per product)
+
+   **Impact:**
+   - Total query time: 2,750ms (96% of request duration)
+   - Database load: 101 connections per request
+   - Under load: This will exhaust your connection pool
+
+   **Recommended Fix:**
+   Use SQL JOINs to fetch all data in a single query.
+
+   Estimated improvement: 95% faster (2750ms → 120ms)
+   ```
+
+   {/* TODO: Add screenshot of Seer's RCA for N+1 queries */}
+
+4. **View the suggested code fix**
+
+   Seer provides a code diff showing exactly what to change:
+
+   ```typescript
+   // ❌ Current code (N+1 pattern)
+   const products = await db.select().from(products).where(eq(products.onSale, true));
+
+   const enriched = await Promise.all(
+     products.map(async (p) => {
+       const discount = await db.select().from(discounts).where(eq(discounts.productId, p.id));
+       const inventory = await db.select().from(inventory).where(eq(inventory.productId, p.id));
+       return { ...p, discount, inventory };
+     })
+   );
+
+   // ✅ Suggested fix (Single query with JOINs)
+   const products = await db
+     .select({
+       id: products.id,
+       name: products.name,
+       price: products.price,
+       discountPercent: discounts.percentage,
+       stock: inventory.quantity,
+     })
+     .from(products)
+     .leftJoin(discounts, eq(products.id, discounts.productId))
+     .leftJoin(inventory, eq(products.id, inventory.productId))
+     .where(eq(products.onSale, true));
+   ```
+
+5. **Ask Seer follow-up questions**
+
+   You can ask Seer for more details:
+
+   ```
+   > "What indexes should I add?"
+
+   Seer: Based on your query, I recommend adding:
+   - Index on `products.on_sale` for WHERE clause filtering
+   - Index on `discounts.product_id` for JOIN performance
+   - Index on `inventory.product_id` for JOIN performance
+
+   Run these migrations:
+   CREATE INDEX idx_products_on_sale ON products(on_sale);
+   CREATE INDEX idx_discounts_product_id ON discounts(product_id);
+   CREATE INDEX idx_inventory_product_id ON inventory(product_id);
+   ```
+
+</Steps>
+
+### Scenario 2: Poor LCP from Slow Images
+
+Let's analyze the homepage image loading issue from Module 2.
+
+<Steps>
+
+1. **Find a poor LCP transaction**
+
+   - Navigate to **Performance** → **Web Vitals** → **LCP**
+   - Filter by: `transaction:"/" AND measurements.lcp:>4000`
+   - Click into a transaction with poor LCP
+
+2. **Ask Seer what's causing slow LCP**
+
+   Seer analyzes the waterfall and identifies:
+
+   ```
+   🔍 Root Cause Analysis
+
+   **Poor LCP Detected: 4,200ms**
+
+   Your Largest Contentful Paint is caused by slow-loading
+   product images on the homepage.
+
+   **Issues Found:**
+   1. Images loading after React hydration (delayed 800ms)
+   2. Full-resolution images served (3.2MB each)
+   3. No lazy loading for below-the-fold images
+   4. No image preloading for hero images
+
+   **Impact on Business:**
+   - 53% of mobile users abandon sites with LCP > 3s
+   - Your LCP of 4.2s likely costs ~15% of conversions
+
+   **Recommended Fixes:**
+   1. Add eager loading for above-fold images
+   2. Serve WebP format (70% smaller)
+   3. Add width/height attributes to prevent layout shifts
+   4. Preload hero image
+   ```
+
+   {/* TODO: Add screenshot of Seer's LCP analysis */}
+
+3. **Apply Seer's suggested fix**
+
+   Seer provides specific code changes:
+
+   ```tsx
+   // ❌ Current
+   <img src={product.imageUrl} alt={product.name} />
+
+   // ✅ Suggested
+   <img
+     src={product.imageUrl}
+     alt={product.name}
+     width={300}
+     height={300}
+     loading="eager"  // For above-fold images
+     decoding="async"
+     style={{ aspectRatio: '1/1' }}
+   />
+   ```
+
+</Steps>
+
+## Having Seer Open PRs Automatically
+
+Instead of manually copying Seer's suggestions, you can have it create a PR for you.
+
+<Steps>
+
+1. **Request an Autofix**
+
+   In the Seer analysis panel, click **"Create PR with Fix"** or **"Apply Autofix"**.
+
+   {/* TODO: Add screenshot of "Create PR" button in Seer */}
+
+2. **Seer creates a branch and PR**
+
+   Seer will:
+   - Create a new branch: `seer/fix-n1-query-sale-api`
+   - Apply the suggested code changes
+   - Add database index migrations
+   - Write tests for the fix
+   - Open a PR on GitHub
+
+   {/* TODO: Add screenshot of Seer-generated PR */}
+
+3. **Review the PR**
+
+   The PR includes:
+
+   **Title:** `[Seer] Fix N+1 query pattern in sale products API`
+
+   **Description:**
+   ```markdown
+   ## Issue
+   The sale products endpoint was executing 101 database queries
+   per request, causing 2.5s response times under load.
+
+   ## Root Cause
+   N+1 query pattern: fetching related data (discounts, inventory)
+   in a loop instead of using SQL JOINs.
+
+   ## Solution
+   - Rewrote query to use LEFT JOINs
+   - Added database indexes for JOIN performance
+   - Reduced query count from 101 → 1
+
+   ## Performance Impact
+   - Response time: 2500ms → 120ms (95% improvement)
+   - Database load: 99% reduction in queries
+
+   ## Testing
+   - Added unit tests for optimized query
+   - Load tested with 100 concurrent requests
+   - Verified distributed tracing shows single query
+
+   🤖 Generated by Sentry Seer
+   ```
+
+   **Files Changed:**
+   - `apps/api/src/routes/products.ts` - Optimized query
+   - `apps/api/drizzle/migrations/0003_add_indexes.sql` - Added indexes
+   - `apps/api/src/routes/products.test.ts` - New tests
+
+4. **Review and merge**
+
+   - Review the code changes
+   - Run CI/CD pipeline (tests should pass)
+   - Request human review if needed
+   - Merge when ready
+
+</Steps>
+
+## Seer for Ongoing Optimization
+
+Seer isn't just for fixing issues - use it proactively for optimization.
+
+<Steps>
+
+1. **Weekly performance review with Seer**
+
+   Every week, review your slowest transactions:
+
+   - Go to **Performance** → Sort by p95 duration
+   - Click into the top 5 slowest transactions
+   - Ask Seer: "How can I optimize this?"
+
+2. **Seer suggests optimizations**
+
+   For a slow checkout API, Seer might suggest:
+
+   ```
+   🔍 Optimization Opportunities
+
+   **Transaction: POST /api/checkout**
+   **Current p95: 1,200ms**
+
+   Potential optimizations:
+
+   1. **Cache user data** (saves 200ms)
+      - User info is fetched on every checkout
+      - Cache with 5-minute TTL
+
+   2. **Parallelize payment processing** (saves 300ms)
+      - Payment gateway and inventory check run sequentially
+      - Can run in parallel with Promise.all()
+
+   3. **Optimize tax calculation** (saves 150ms)
+      - Tax API called even when same address
+      - Cache tax rates by ZIP code
+
+   Estimated improvement: 650ms faster (46% improvement)
+   ```
+
+3. **Prioritize based on business impact**
+
+   Seer shows impact for each suggestion:
+
+   | Optimization | Time Saved | Effort | ROI |
+   |--------------|------------|--------|-----|
+   | Cache user data | 200ms | Low | High ⭐⭐⭐ |
+   | Parallelize payment | 300ms | Medium | High ⭐⭐⭐ |
+   | Cache tax rates | 150ms | Low | Medium ⭐⭐ |
+
+</Steps>
+
+## When to Trust Seer vs. Manual Review
+
+Seer is powerful, but not infallible. Here's when to trust it:
+
+**✅ Trust Seer for:**
+- Obvious performance issues (N+1 queries, missing indexes)
+- Standard optimizations (image loading, caching)
+- Database query optimization
+- Code that follows common patterns
+
+**⚠️ Review carefully for:**
+- Changes to business logic
+- Security-sensitive code (auth, payments)
+- Complex algorithm changes
+- Code with subtle edge cases
+
+**❌ Don't use Seer for:**
+- Critical payment processing logic
+- Complex business rules
+- Code you don't understand
+- Quick production hotfixes (review manually first)
+
+:::tip[Best Practice]
+Always review Seer's PRs with a human. Treat Seer as a very smart junior developer - great at spotting patterns, but needs oversight for business-critical code.
+:::
+
+## Measuring Seer's Impact
+
+Track how Seer improves your codebase over time.
+
+<Steps>
+
+1. **Create a Seer metrics dashboard**
+
+   Track:
+   - PRs created by Seer
+   - PRs merged vs. rejected
+   - Average performance improvement per fix
+   - Time saved (vs. manual debugging)
+
+2. **Example metrics after 1 month:**
+
+   | Metric | Value |
+   |--------|-------|
+   | Seer PRs created | 23 |
+   | PRs merged | 18 (78%) |
+   | Avg. performance improvement | 62% faster |
+   | Time saved | ~40 developer hours |
+   | Issues prevented | 5 production incidents |
+
+</Steps>
+
+## Using Seer with Error Monitoring
+
+Seer doesn't just optimize performance - it debugs errors too.
+
+<Steps>
+
+1. **Find an error with unclear root cause**
+
+   - Navigate to **Issues** in Sentry
+   - Click into an error you're stuck on
+
+2. **Ask Seer to analyze the error**
+
+   Example error:
+   ```
+   TypeError: Cannot read property 'price' of undefined
+   at CheckoutForm.calculateTotal (CheckoutForm.tsx:45)
+   ```
+
+   Seer's analysis:
+   ```
+   🔍 Root Cause Analysis
+
+   **Error:** Cannot read property 'price' of undefined
+
+   **Why it's happening:**
+   Your checkout form assumes all cart items have a `price`
+   property, but some promotional items don't have prices
+   set (they're determined at checkout time).
+
+   **When it occurs:**
+   - When cart contains promotional/free items
+   - When items are added via gift codes
+   - ~5% of checkout attempts
+
+   **Suggested fix:**
+   Add null checking and provide default behavior for
+   items without prices.
+   ```
+
+3. **Apply the fix**
+
+   Seer suggests:
+
+   ```tsx
+   // ❌ Current (crashes on undefined)
+   const total = cartItems.reduce((sum, item) => sum + item.price, 0);
+
+   // ✅ Suggested (handles missing prices)
+   const total = cartItems.reduce((sum, item) => {
+     const price = item.price ?? item.promotionalPrice ?? 0;
+     return sum + price;
+   }, 0);
+   ```
+
+</Steps>
+
+## Key Takeaways
+
+- **Seer provides root cause analysis** for performance issues and errors
+- **AI-suggested fixes** are specific to your codebase, not generic
+- **Automated PRs** save time but still need human review
+- **Use Seer proactively** for weekly performance optimization
+- **Trust but verify** - Seer is a tool, not a replacement for developer judgment
+
+## Workshop Complete! 🎉
+
+Congratulations! You've built a comprehensive frontend performance monitoring system:
+
+✅ **Module 1:** Instrumented Sentry for performance & error tracking
+✅ **Module 2:** Fixed Web Vitals issues (LCP, CLS, TTFB)
+✅ **Module 3:** Traced frontend slowness to backend N+1 queries
+✅ **Module 4:** Used Session Replay to fix UX issues hurting conversions
+✅ **Module 5:** Leveraged Seer AI for automated debugging and fixes
+
+### Your Application is Now Ready For:
+
+- **High traffic periods** (Black Friday, holiday sales)
+- **Fast issue detection** with real-time alerts
+- **Quick debugging** with Session Replay and distributed tracing
+- **Proactive optimization** with Seer AI suggestions
+- **Confident deployments** with performance monitoring
+
+## Next Steps
+
+**Deploy to Production:**
+1. Merge your performance optimizations
+2. Deploy with Sentry instrumentation
+3. Monitor Web Vitals in production
+4. Set sample rates appropriately (10-30%)
+
+**Continuous Improvement:**
+1. Review Sentry dashboards weekly
+2. Ask Seer about slow transactions
+3. Watch Session Replays for UX issues
+4. Iterate on performance optimizations
+
+**Share Your Success:**
+1. Show stakeholders the conversion rate improvements
+2. Document performance wins
+3. Train your team on Sentry + Seer
+4. Build a performance-focused culture
+
+---
+
+**Thank you for participating!** Your e-commerce application is now instrumented, optimized, and ready to handle holiday traffic with confidence. Keep monitoring, keep optimizing, and keep shipping! 🚀

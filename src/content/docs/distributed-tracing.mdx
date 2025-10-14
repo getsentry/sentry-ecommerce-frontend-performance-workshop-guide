@@ -1,0 +1,499 @@
+---
+title: Distributed Tracing & Backend Performance
+description: Trace frontend slowness to backend bottlenecks, identify N+1 queries under load, and optimize database performance
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import ScaledImage from '../../components/ScaledImage.astro';
+
+In the previous module, we fixed the frontend by adding a skeleton screen to the sale page. Users now see content immediately instead of a blank screen. But the skeleton loads for 2-3 seconds before products appear. The problem isn't the frontend anymore - it's the backend API. Let's use distributed tracing to find out why.
+
+## Learning Objectives
+
+By the end of this module, you will:
+
+- Use distributed tracing to connect frontend performance to backend bottlenecks
+- Simulate traffic to reveal performance issues under load
+- Identify N+1 query problems in API endpoints
+- Fix database performance issues with query optimization
+- Measure improvements with Sentry's performance monitoring
+
+## The Problem: Sale API is Slow
+
+We added a skeleton screen, which improved **perceived performance** (TTFB is better). But the actual API response time is still terrible:
+
+- **Sale API response time**: 2-3 seconds
+- **Impact**: Users wait 2-3 seconds staring at skeletons before seeing products
+- **Root cause**: Unknown (that's what we'll discover!)
+
+:::note[Frontend Fix ≠ Backend Fix]
+Skeleton screens improve **perceived** performance by showing content immediately. But they don't fix **actual** performance. If your API is slow, users still wait - they just see a nicer loading state. Let's fix the real problem.
+:::
+
+## Running the Traffic Simulation
+
+Under normal load (< 10 users), the sale API seems fine. But during holiday traffic, it becomes unusably slow. Let's simulate Black Friday traffic to reveal the bottleneck.
+
+<Steps>
+
+1. **Run the traffic simulation script**
+
+   From the root of your `unborked` repository:
+
+   ```bash
+   pnpm traffic
+   ```
+
+   This simulates 100 concurrent users hitting the sale endpoint repeatedly.
+
+   {/* TODO: Add screenshot of traffic simulation running in terminal */}
+
+2. **Watch Sentry Performance view**
+
+   - Open your backend project in Sentry
+   - Navigate to **Performance** → **Transactions**
+   - Filter by: `transaction:"GET /api/products/sale"`
+   - Watch the transactions pour in
+
+   {/* TODO: Add screenshot of Sentry showing spike in transactions */}
+
+3. **Observe the slowdown**
+
+   - Look at the **p95** response time
+   - You'll see it's in the **2000-3000ms range** (Poor!)
+   - Some requests are even worse (**> 5000ms**)
+
+</Steps>
+
+## Using Distributed Tracing to Find the Bottleneck
+
+Let's follow a request from the frontend, through the backend, all the way to the database.
+
+<Steps>
+
+1. **Find a slow sale page transaction**
+
+   - In Sentry (Frontend Project) → **Performance**
+   - Filter by: `transaction:"/sale"`
+   - Click into a transaction with high duration (> 2000ms)
+
+   {/* TODO: Add screenshot of slow frontend /sale transaction */}
+
+2. **View the full distributed trace**
+
+   - Click **"View Full Trace"**
+   - You'll see the complete waterfall:
+     - Frontend: `/sale` pageload (2500ms total)
+       - HTTP request to backend (2300ms)
+       - Backend: `GET /api/products/sale` (2200ms)
+         - Many database queries...
+
+   {/* TODO: Add screenshot of distributed trace waterfall */}
+
+3. **Analyze the backend span**
+
+   - Click into the backend span
+   - Look at the child spans (database queries)
+   - **This is where you'll see the problem!**
+
+</Steps>
+
+## Discovering the N+1 Query Problem
+
+When you expand the backend span, you'll see a "comb" pattern - hundreds of tiny database queries executing sequentially. This is the classic **N+1 query problem**.
+
+{/* TODO: Add screenshot showing N+1 query pattern in trace waterfall */}
+
+**What's happening:**
+
+1. Initial query fetches 50 sale products: **50ms** ✅
+2. For **each** product, fetch discount details: **30ms × 50 = 1500ms** ⚠️
+3. For **each** product, fetch inventory count: **25ms × 50 = 1250ms** ⚠️
+
+**Total wasted time**: **~2750ms** just on unnecessary queries!
+
+:::caution[N+1 Query Anti-Pattern]
+The N+1 problem occurs when you fetch N records, then make 1 additional query for each record to fetch related data. For 50 products, that's 101 total queries (1 + 50 × 2). Under load, this destroys performance.
+:::
+
+## Instrumenting the Sale API
+
+Let's add instrumentation to the backend so we can see exactly what's happening.
+
+<Steps>
+
+1. **Open the sale products endpoint**
+
+   Navigate to `apps/api/src/routes/products.ts` and find the sale endpoint.
+
+2. **Add Sentry spans to track queries**
+
+   ```typescript
+   import * as Sentry from '@sentry/node';
+
+   router.get('/sale', async (req, res) => {
+     return await Sentry.startSpan(
+       {
+         name: 'products.sale.backend',
+         op: 'http.server',
+       },
+       async (span) => {
+         try {
+           Sentry.logger.info('Fetching sale products');
+
+           // ⚠️ N+1 PROBLEM: Initial query for sale products
+           const saleProducts = await Sentry.startSpan(
+             {
+               name: 'db.query.sale_products',
+               op: 'db.query',
+             },
+             async () => {
+               return await db
+                 .select()
+                 .from(products)
+                 .where(eq(products.onSale, true))
+                 .limit(50);
+             }
+           );
+
+           span.setAttributes({
+             'products.count': saleProducts.length,
+           });
+
+           // ⚠️ N+1 PROBLEM: For each product, fetch related data
+           const enrichedProducts = await Promise.all(
+             saleProducts.map(async (product) => {
+               // Query 1: Get discount details
+               const discount = await Sentry.startSpan(
+                 { name: 'db.query.discount', op: 'db.query' },
+                 async () => {
+                   return await db
+                     .select()
+                     .from(discounts)
+                     .where(eq(discounts.productId, product.id))
+                     .limit(1);
+                 }
+               );
+
+               // Query 2: Get inventory count
+               const inventory = await Sentry.startSpan(
+                 { name: 'db.query.inventory', op: 'db.query' },
+                 async () => {
+                   return await db
+                     .select()
+                     .from(inventory)
+                     .where(eq(inventory.productId, product.id))
+                     .limit(1);
+                 }
+               );
+
+               return {
+                 ...product,
+                 discount: discount[0],
+                 stock: inventory[0]?.quantity || 0,
+               };
+             })
+           );
+
+           span.setAttributes({
+             'db.queries.total': 1 + (saleProducts.length * 2), // 101 queries!
+           });
+
+           Sentry.logger.info(
+             `Sale API completed with ${1 + saleProducts.length * 2} database queries`
+           );
+
+           res.json({
+             success: true,
+             products: enrichedProducts,
+           });
+
+         } catch (error) {
+           Sentry.logger.error(`Sale API error: ${error.message}`);
+           Sentry.captureException(error);
+           res.status(500).json({ error: 'Failed to fetch sale products' });
+         }
+       }
+     );
+   });
+   ```
+
+3. **Restart the backend and run traffic again**
+
+   ```bash
+   pnpm dev
+   # In another terminal
+   pnpm traffic
+   ```
+
+4. **View the instrumented trace**
+
+   - Go back to Sentry → Find a new `GET /api/products/sale` transaction
+   - Expand the waterfall
+   - You'll now see all 101 child spans clearly labeled ✅
+
+   {/* TODO: Add screenshot of instrumented trace showing all database queries */}
+
+</Steps>
+
+## Fixing the N+1 Problem with SQL JOINs
+
+Now that we've identified the problem, let's fix it by fetching all data in a single query.
+
+<Steps>
+
+1. **Rewrite the query with JOINs**
+
+   Replace the N+1 code with an optimized query:
+
+   ```typescript
+   router.get('/sale', async (req, res) => {
+     return await Sentry.startSpan(
+       {
+         name: 'products.sale.backend',
+         op: 'http.server',
+       },
+       async (span) => {
+         try {
+           span.setAttributes({
+             'optimization.applied': 'sql_joins',
+           });
+
+           Sentry.logger.info('Fetching sale products (optimized)');
+
+           // ✅ OPTIMIZED: Single query with JOINs
+           const products = await Sentry.startSpan(
+             {
+               name: 'db.query.sale_products_optimized',
+               op: 'db.query',
+             },
+             async (dbSpan) => {
+               const queryStart = performance.now();
+
+               const results = await db
+                 .select({
+                   id: products.id,
+                   name: products.name,
+                   description: products.description,
+                   price: products.price,
+                   imageUrl: products.imageUrl,
+                   onSale: products.onSale,
+                   // Join discount data
+                   discountPercent: discounts.percentage,
+                   discountCode: discounts.code,
+                   // Join inventory data
+                   stock: inventory.quantity,
+                 })
+                 .from(products)
+                 .leftJoin(discounts, eq(products.id, discounts.productId))
+                 .leftJoin(inventory, eq(products.id, inventory.productId))
+                 .where(eq(products.onSale, true))
+                 .limit(50);
+
+               const queryDuration = performance.now() - queryStart;
+
+               dbSpan.setAttributes({
+                 'db.query.duration_ms': queryDuration,
+                 'db.query.rows_returned': results.length,
+                 'db.query.type': 'optimized_join',
+               });
+
+               return results;
+             }
+           );
+
+           span.setAttributes({
+             'products.count': products.length,
+             'db.queries.total': 1, // Down from 101! ✅
+           });
+
+           Sentry.logger.info(
+             `Sale API completed with 1 database query (was ${1 + products.length * 2})`
+           );
+
+           res.json({
+             success: true,
+             products: products,
+           });
+
+         } catch (error) {
+           Sentry.captureException(error);
+           res.status(500).json({ error: 'Failed to fetch sale products' });
+         }
+       }
+     );
+   });
+   ```
+
+2. **Test the optimization**
+
+   - Restart the backend: `pnpm dev`
+   - Run the traffic simulation again: `pnpm traffic`
+   - Check Sentry → Find a new transaction
+
+3. **View the improved trace**
+
+   - You'll now see:
+     - `db.query.sale_products_optimized`: **80-120ms** ✅
+     - No more N+1 child spans!
+     - **Total API response time: ~150ms** (down from 2500ms!)
+
+   {/* TODO: Add screenshot of optimized trace with single query */}
+
+</Steps>
+
+## Measuring the Improvement
+
+Let's compare before and after using Sentry's performance data.
+
+<Steps>
+
+1. **Compare transaction durations**
+
+   - Go to **Performance** → `GET /api/products/sale`
+   - Look at the **p95** duration over time
+   - You should see a dramatic drop after deploying the fix:
+     - **Before**: 2000-3000ms
+     - **After**: 100-200ms ✅
+     - **Improvement**: **93% faster!**
+
+   {/* TODO: Add screenshot showing performance improvement graph */}
+
+2. **Check database query counts**
+
+   - Click into an optimized transaction
+   - Check the `db.queries.total` attribute
+   - **Before**: 101 queries
+   - **After**: 1 query ✅
+   - **Reduction**: **99% fewer queries!**
+
+3. **Verify frontend improvement**
+
+   - Navigate to your frontend project in Sentry
+   - Check the `/sale` page transactions
+   - The skeleton screen should now disappear much faster
+   - Users see products in **< 300ms** instead of **2500ms**
+
+</Steps>
+
+## Adding Database Indexes for Further Optimization
+
+Even with JOINs, queries can be slow without proper indexes. Let's add them.
+
+<Steps>
+
+1. **Check which columns need indexes**
+
+   Based on our query, we're filtering on:
+   - `products.onSale` (WHERE clause)
+   - `products.id`, `discounts.productId`, `inventory.productId` (JOIN conditions)
+
+2. **Create indexes**
+
+   Run a database migration to add indexes:
+
+   ```bash
+   cd apps/api
+   pnpm db:generate
+   ```
+
+   Add to your migration:
+
+   ```sql
+   -- Index for filtering sale products
+   CREATE INDEX IF NOT EXISTS idx_products_on_sale ON products(on_sale);
+
+   -- Indexes for JOIN performance
+   CREATE INDEX IF NOT EXISTS idx_discounts_product_id ON discounts(product_id);
+   CREATE INDEX IF NOT EXISTS idx_inventory_product_id ON inventory(product_id);
+   ```
+
+3. **Run the migration**
+
+   ```bash
+   pnpm migrate
+   ```
+
+4. **Test the indexed queries**
+
+   - Run the traffic simulation again: `pnpm traffic`
+   - Check the query duration in Sentry
+   - **Indexed query**: **30-50ms** (down from 80-120ms) ✅
+
+</Steps>
+
+:::tip[Database Performance Quick Wins]
+- **Add indexes** on columns used in WHERE, JOIN, and ORDER BY clauses
+- **Use JOINs** instead of separate queries to avoid N+1 problems
+- **Select only needed columns** - don't use `SELECT *`
+- **Add LIMIT** clauses to prevent accidentally fetching millions of rows
+:::
+
+## Performance Comparison
+
+Here's the complete before/after:
+
+| Metric | Before (N+1) | After (JOINs + Indexes) | Improvement |
+|--------|--------------|-------------------------|-------------|
+| API Response Time (p95) | 2500ms | 50ms | **98% faster** |
+| Database Queries | 101 queries | 1 query | **99% reduction** |
+| Frontend Skeleton Duration | 2500ms | 50ms | **98% faster** |
+| User Experience | Terrible | Fast ✅ | 🎉 |
+
+## Using Sentry's Seer AI for Optimization Suggestions
+
+Sentry's AI can automatically detect these patterns and suggest fixes.
+
+<Steps>
+
+1. **Access Seer from a slow transaction**
+
+   - Find a transaction from before the optimization
+   - Click **"Ask Seer"** or **"Get AI Insights"**
+
+2. **Review AI suggestions**
+
+   Seer will identify:
+   - The N+1 query pattern
+   - Missing database indexes
+   - Suggested SQL rewrites with JOINs
+   - Estimated performance improvement
+
+3. **Let Seer open a PR** (Optional)
+
+   If you have GitHub integration configured:
+   - Seer can generate a PR with the fix
+   - Review the code and merge if it looks good
+
+   {/* TODO: Add screenshot of Seer AI suggestions */}
+
+</Steps>
+
+## Key Takeaways
+
+- **Frontend fixes (skeleton screens) improve perceived performance, not actual performance**
+- **Distributed tracing** reveals the complete request flow from frontend to database
+- **Traffic simulation** reveals performance problems that don't appear under light load
+- **N+1 queries** are a common performance killer - look for the "comb" pattern in traces
+- **SQL JOINs** can reduce 100+ queries to a single query
+- **Database indexes** are essential for fast query performance
+- **Sentry's Seer AI** can automatically detect and suggest fixes for N+1 problems
+
+:::note[What's Next?]
+We've instrumented Sentry, fixed Web Vitals issues, and optimized backend performance. In the next module, we'll use Session Replay and Logs to debug complex user experience issues and understand exactly what users are experiencing.
+:::
+
+## Production Checklist
+
+Before deploying these changes:
+
+- [ ] N+1 queries identified and fixed with JOINs
+- [ ] Database indexes added for all filtered and joined columns
+- [ ] Performance improvements verified in Sentry (> 90% faster)
+- [ ] Traffic simulation run successfully with no errors
+- [ ] Distributed tracing shows single optimized query
+- [ ] Frontend skeleton screen duration improved
+
+---
+
+**Next up:** We'll use Session Replay and Logs to watch real user sessions and debug issues we can't see in performance data alone.
