@@ -8,12 +8,49 @@ import ScaledImage from '../../components/ScaledImage.astro';
 
 The holiday season is approaching. Traffic is about to spike. Let's get Sentry instrumented so you can monitor performance, catch errors, and keep your e-commerce site running smoothly when it matters most.
 
-In this module, you'll instrument **Performance Monitoring, Error Tracking, Session Replay, and Distributed Tracing** across your React frontend and Node.js backend, then set up **alert rules** to surface critical issues fast.
+## Learning Objectives
+
+By the end of this module, you will:
+
+- Set up Sentry Performance Monitoring with Web Vitals tracking (LCP, CLS, FCP, TTFB, INP)
+- Configure Error Monitoring for both frontend and backend
+- Enable Session Replays to debug user interactions visually
+- Enable structured logging to capture console logs alongside traces and errors
+- Implement distributed tracing to track requests across services
+- Integrate React Router v6 for parameterized route tracking
+- Understand sample rates and when to adjust them for production
+
+## What is Sentry?
+
+Sentry is a comprehensive application monitoring platform that helps developers identify, debug, and resolve performance issues and errors before they impact users. Key features for e-commerce applications include:
+
+- **Performance Monitoring**: Track Web Vitals (LCP, CLS, FCP, TTFB, INP) and custom performance metrics
+- **Error Monitoring**: Automatic error detection with stack traces and context
+- **Session Replays**: Visual recordings of user sessions to understand checkout failures
+- **Distributed Tracing**: Follow requests from frontend through backend to database
+- **Structured Logging**: Capture and correlate logs with traces and errors for complete context
+
+:::note[Why Performance Monitoring Matters for E-commerce]
+During peak traffic periods (Black Friday, holiday sales), even small performance degradations can significantly impact conversion rates. Studies show that a 1-second delay in page load time can reduce conversions by 7%. Sentry helps you catch and fix these issues proactively.
+:::
+
+### Understanding Web Vitals
+
+Sentry automatically captures five key Web Vitals that measure how users actually experience your site:
+
+- **LCP (Largest Contentful Paint)**: How long it takes for your main content to load. Target: < 2.5s
+- **CLS (Cumulative Layout Shift)**: How much your page layout shifts unexpectedly. Target: < 0.1
+- **FCP (First Contentful Paint)**: How quickly users see any content on the page. Target: < 1.8s
+- **TTFB (Time to First Byte)**: How fast your server responds with the first byte of data. Target: < 800ms
+- **INP (Interaction to Next Paint)**: How responsive your page is to user interactions. Target: < 200ms
+
+These metrics are used to calculate a **Performance Score** (0-100) for your application, helping you identify pages that need optimization.
 
 :::note[Before You Begin]
 Make sure you have two Sentry projects created:
+
 1. **Frontend Project**: Select "React" as the platform
-2. **Backend Project**: Select "Node.js" as the platform
+2. **Backend Project**: Select "Express" as the platform
 
 Save both DSN values - you'll need them in the next steps.
 :::
@@ -30,22 +67,42 @@ Save both DSN values - you'll need them in the next steps.
    pnpm add @sentry/react --filter web
    ```
 
-2. **Create the instrumentation file**
+2. **Create the instrumentation file with React Router v6 integration**
 
    Create `apps/web/src/instrument.ts`:
 
    ```typescript
    import * as Sentry from '@sentry/react';
+   import { useEffect } from 'react';
+   import {
+     useLocation,
+     useNavigationType,
+     createRoutesFromChildren,
+     matchRoutes,
+   } from 'react-router-dom';
 
    Sentry.init({
      dsn: import.meta.env.VITE_SENTRY_DSN,
 
+     enableLogs: true,
      integrations: [
-       // Capture Web Vitals and browser performance
-       Sentry.browserTracingIntegration({
-         enableLongTask: true,
-         enableInp: true,
+       // React Router v6 integration for automatic route tracking
+       // Captures all 5 Web Vitals: LCP, CLS, FCP, TTFB, INP
+       Sentry.reactRouterV6BrowserTracingIntegration({
+         useEffect,
+         useLocation,
+         useNavigationType,
+         createRoutesFromChildren,
+         matchRoutes,
+         // Performance monitoring options
+         idleTimeout: 10000, // Wait 10 seconds for additional requests (default: 1000ms)
+         _experiments: {
+           enableStandaloneLcpSpans: true, // LCP: Largest Contentful Paint
+           enableStandaloneClsSpans: true, // CLS: Cumulative Layout Shift (can happen after pageload)
+         },
        }),
+
+       Sentry.consoleLoggingIntegration({ levels: ['log', 'warn', 'error'] }),
 
        // Session Replay for debugging user interactions
        Sentry.replayIntegration({
@@ -59,18 +116,91 @@ Save both DSN values - you'll need them in the next steps.
      tracesSampleRate: 1.0, // 100% in dev (reduce to 0.1-0.3 in production)
 
      // Distributed tracing - connect frontend to backend
-     tracePropagationTargets: ['localhost:3001', /^https:\/\/your-api\.com/],
+     tracePropagationTargets: [import.meta.env.VITE_API_BASE_URL],
 
      // Session Replay sampling
-     replaysSessionSampleRate: 0.1,  // 10% of sessions
-     replaysOnErrorSampleRate: 1.0,  // 100% of errors
+     replaysSessionSampleRate: 0.1, // 10% of sessions
+     replaysOnErrorSampleRate: 1.0, // 100% of errors
 
      sendDefaultPii: true,
      environment: import.meta.env.MODE,
    });
    ```
 
-3. **Import instrumentation in `main.tsx`**
+   :::tip[Sample Rate Best Practices]
+   - **tracesSampleRate**: Start with 1.0 (100%) during development. In production, use 0.1-0.3 (10-30%) to manage costs while maintaining visibility.
+   - **replaysSessionSampleRate**: Keep low (0.1 = 10%) to capture representative samples without excessive storage costs.
+   - **replaysOnErrorSampleRate**: Keep at 1.0 (100%) to always capture context when errors occur.
+     :::
+
+   :::note[React Router v6 Integration]
+   We're using `reactRouterV6BrowserTracingIntegration` instead of the generic `browserTracingIntegration`. This automatically:
+   - Creates parameterized transaction names (like `/products/:id` instead of `/products/123`)
+   - Tracks all five Web Vitals: **LCP** (Largest Contentful Paint), **CLS** (Cumulative Layout Shift), **FCP** (First Contentful Paint), **TTFB** (Time to First Byte), and **INP** (Interaction to Next Paint)
+   - Captures route changes for accurate navigation performance
+
+   The `idleTimeout` of 10000ms ensures we capture all related requests in a single transaction. The experimental standalone spans for LCP and CLS allow us to track these critical Web Vitals even when they occur after the initial pageload completes.
+   :::
+
+3. **Create an error boundary component**
+
+   Create `apps/web/src/components/ErrorBoundary.tsx`:
+
+   ```typescript
+   import * as Sentry from '@sentry/react';
+   import { useRouteError, isRouteErrorResponse } from 'react-router-dom';
+   import { useEffect } from 'react';
+
+   export default function ErrorBoundary() {
+     const error = useRouteError();
+
+     useEffect(() => {
+       // Send route errors to Sentry
+       if (error) {
+         Sentry.captureException(error);
+       }
+     }, [error]);
+
+     if (isRouteErrorResponse(error)) {
+       return (
+         <div className="min-h-screen flex items-center justify-center bg-gray-50">
+           <div className="text-center">
+             <h1 className="text-4xl font-bold text-red-600 mb-4">
+               {error.status}
+             </h1>
+             <p className="text-xl text-gray-600 mb-4">{error.statusText}</p>
+             <p className="text-gray-500">{error.data}</p>
+           </div>
+         </div>
+       );
+     }
+
+     return (
+       <div className="min-h-screen flex items-center justify-center bg-gray-50">
+         <div className="text-center">
+           <h1 className="text-2xl font-bold text-red-600 mb-4">
+             Something went wrong
+           </h1>
+           <p className="text-gray-600 mb-4">
+             {error instanceof Error ? error.message : 'Unknown error occurred'}
+           </p>
+           <button
+             onClick={() => window.location.reload()}
+             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+           >
+             Reload page
+           </button>
+         </div>
+       </div>
+     );
+   }
+   ```
+
+   :::tip[Error Boundaries in Production]
+   In production, React Router only re-throws errors in development mode with Strict Mode enabled. This error boundary ensures all routing errors are captured and sent to Sentry in production.
+   :::
+
+4. **Import instrumentation in `main.tsx`**
 
    Add this import at the **very top** of `apps/web/src/main.tsx`:
 
@@ -80,6 +210,7 @@ Save both DSN values - you'll need them in the next steps.
 
    import React from 'react';
    import ReactDOM from 'react-dom/client';
+   import * as Sentry from '@sentry/react';
    // ... rest of your imports
    ```
 
@@ -87,7 +218,87 @@ Save both DSN values - you'll need them in the next steps.
    The instrument file must be imported first to capture all errors and performance data from the start.
    :::
 
-4. **Update environment variables**
+5. **Wrap your Routes component with Sentry**
+
+   Update `apps/web/src/App.tsx` to wrap your `<Routes>` component:
+
+   ```typescript
+   import { BrowserRouter, Routes, Route } from 'react-router-dom';
+   import * as Sentry from '@sentry/react';
+   import { CartProvider } from './context/CartContext';
+   import { AuthProvider } from './context/AuthContext';
+   import Header from './components/Header';
+   import ErrorBoundary from './components/ErrorBoundary';
+   import Home from './pages/Home';
+   import Cart from './pages/Cart';
+   import Login from './pages/Login';
+   import Register from './pages/Register';
+   import ProductDetail from './pages/ProductDetail';
+   import Shop from './pages/Shop';
+   import Sale from './pages/Sale';
+
+   // Create the Sentry-wrapped Routes component
+   const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
+
+   function App() {
+     return (
+       <BrowserRouter>
+         <AuthProvider>
+           <CartProvider>
+             <div className="min-h-screen bg-gray-100">
+               <Header />
+               <SentryRoutes>
+                 <Route
+                   path="/"
+                   element={<Home />}
+                   errorElement={<ErrorBoundary />}
+                 />
+                 <Route
+                   path="/shop"
+                   element={<Shop />}
+                   errorElement={<ErrorBoundary />}
+                 />
+                 <Route
+                   path="/sale"
+                   element={<Sale />}
+                   errorElement={<ErrorBoundary />}
+                 />
+                 <Route
+                   path="/cart"
+                   element={<Cart />}
+                   errorElement={<ErrorBoundary />}
+                 />
+                 <Route
+                   path="/login"
+                   element={<Login />}
+                   errorElement={<ErrorBoundary />}
+                 />
+                 <Route
+                   path="/register"
+                   element={<Register />}
+                   errorElement={<ErrorBoundary />}
+                 />
+                 <Route
+                   path="/product/:id"
+                   element={<ProductDetail />}
+                   errorElement={<ErrorBoundary />}
+                 />
+               </SentryRoutes>
+             </div>
+           </CartProvider>
+         </AuthProvider>
+       </BrowserRouter>
+     );
+   }
+
+   export default App;
+   ```
+
+   :::note[Route Instrumentation]
+   `withSentryReactRouterV6Routing` creates parameterized transaction names (like `/product/:id` instead of `/product/123`), making it easier to aggregate and analyze performance data across similar routes. The `errorElement` on each route ensures all routing errors are captured and sent to Sentry.
+   :::
+
+6. **Update environment variables**
 
    Add your Sentry DSN to `apps/web/.env`:
 
@@ -96,7 +307,7 @@ Save both DSN values - you'll need them in the next steps.
    VITE_API_BASE_URL=http://localhost:3001
    ```
 
-5. **Set up sourcemaps with Sentry Wizard**
+7. **Set up sourcemaps with Sentry Wizard**
 
    Sourcemaps help you debug minified production code:
 
@@ -114,11 +325,19 @@ Save both DSN values - you'll need them in the next steps.
 
    This creates `.env.sentry-build-plugin` and updates `vite.config.ts` automatically.
 
+8. **Return to the root directory**
+
+   Navigate back to the root of your project:
+
+   ```bash
+   cd ../..
+   ```
+
 </Steps>
 
-{/* TODO: Add screenshot of Sentry dashboard showing transactions coming in */}
+<ScaledImage src="/assets/img/frontend-setup.png" alt="Sentry Traces on the frontend" />
 
-## Instrumenting Your Backend (Node.js)
+## Instrumenting Your Backend (Express)
 
 <Steps>
 
@@ -141,16 +360,22 @@ Save both DSN values - you'll need them in the next steps.
      // Performance Monitoring
      tracesSampleRate: 1.0, // 100% in dev
 
-     // Enable console logs in traces
+     // Enable structured logging - captures console.log, console.error, etc.
      enableLogs: true,
-
+     integrations: [
+       Sentry.consoleLoggingIntegration({ levels: ['log', 'warn', 'error'] }),
+     ],
      environment: process.env.NODE_ENV || 'development',
    });
    ```
 
+   :::tip[Structured Logging]
+   With `enableLogs: true` and the `consoleLoggingIntegration`, Sentry automatically captures all `console.log()`, `console.error()`, `console.warn()`, and other console statements. These logs are correlated with your traces and errors, giving you complete context when debugging issues. In Session Replays, you'll see these logs in the console tab alongside the visual recording.
+   :::
+
 3. **Import instrumentation in `index.ts`**
 
-   At the **very top** of `apps/api/src/index.ts`:
+   Update `apps/api/src/index.ts` with the complete instrumentation:
 
    ```typescript
    // This MUST be the first import!
@@ -158,17 +383,89 @@ Save both DSN values - you'll need them in the next steps.
 
    import express from 'express';
    import * as Sentry from '@sentry/node';
-   // ... other imports
+   import cors from 'cors';
+   import dotenv from 'dotenv';
+   import routes from './routes';
+   import { Request, Response, NextFunction } from 'express';
+
+   dotenv.config();
 
    const app = express();
 
-   // ... your middleware and routes ...
+   const PORT = 3001;
+   const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:4173';
+
+   const corsOptions = {
+     origin: [FRONTEND_URL],
+     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+     allowedHeaders: [
+       'Content-Type',
+       'Authorization',
+       'X-API-Key',
+       'sentry-trace',
+       'baggage',
+     ],
+     credentials: true,
+   };
+
+   app.use(cors(corsOptions));
+   app.use(express.json());
+
+   app.use((req: Request, res: Response, next: NextFunction) => {
+     console.log(`${req.method} ${req.url} - Request received`);
+     next();
+   });
+
+   // Routes
+   app.use('/api', routes);
 
    // Add Sentry error handler AFTER all routes
    Sentry.setupExpressErrorHandler(app);
 
-   // Your custom error handler (if any) goes after
+   // Custom error handler goes AFTER Sentry's error handler
+   app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+     console.error('Unhandled error occurred:', err.message, err.stack);
+
+     res.status(500).json({
+       error: 'Something broke!',
+       message:
+         process.env.NODE_ENV === 'development'
+           ? err.message
+           : 'Internal Server Error',
+     });
+   });
+
+   const startServer = async () => {
+     try {
+       console.log('🚀 Starting server...');
+
+       // Start server
+       console.log('About to call app.listen on port', PORT);
+       app.listen(PORT, () => {
+         console.log('✅ Server is running on port', PORT);
+         console.log(`🔗 Allowed frontend origin: ${FRONTEND_URL}`);
+       });
+     } catch (startupError: any) {
+       console.error(
+         '❌ Failed to start server:',
+         startupError.message,
+         startupError.stack
+       );
+       process.exit(1);
+     }
+   };
+
+   startServer();
    ```
+
+   :::caution[Middleware Order Is Critical]
+   1. Import `./instrument` **first** (before any other imports)
+   2. Set up your routes
+   3. Add `Sentry.setupExpressErrorHandler(app)` **after** routes
+   4. Add your custom error handlers **after** Sentry's error handler
+
+   This ensures Sentry captures all errors before your custom handlers process them. Also note the `'sentry-trace'` and `'baggage'` headers in CORS config - these are required for distributed tracing to work between frontend and backend.
+   :::
 
 4. **Update environment variables**
 
@@ -181,7 +478,7 @@ Save both DSN values - you'll need them in the next steps.
 
 5. **Test your setup**
 
-   Start the dev servers:
+   Your server should be running already, but if not, start it with:
 
    ```bash
    cd ../..  # Back to root
@@ -192,125 +489,28 @@ Save both DSN values - you'll need them in the next steps.
 
 </Steps>
 
-{/* TODO: Add screenshot of Sentry Performance view showing frontend and backend transactions */}
-
-## Connecting Frontend to Backend (Distributed Tracing)
-
-Distributed tracing lets you follow a request from the user's browser, through your frontend, to your backend API, and down to the database. This is crucial for understanding end-to-end performance.
-
-The configuration you added above (`tracePropagationTargets` in frontend) automatically connects frontend and backend traces.
-
-**To verify it's working:**
-
-1. Navigate to a product page in your app
-2. In Sentry, find the pageload transaction for that page
-3. Click **"View Full Trace"** to see both frontend and backend spans connected
-
-{/* TODO: Add screenshot of a distributed trace showing frontend → backend connection */}
-
-:::tip[What You Should See]
-A waterfall view showing your React pageload, the API request, database queries, and total response time. This is your performance debugging superpower.
-:::
-
-## Setting Up Alert Rules
-
-Now that data is flowing, let's set up alerts to catch critical issues before your customers notice.
-
-<Steps>
-
-1. **Create an Error Rate Alert (Frontend)**
-
-   Navigate to your frontend project in Sentry → **Alerts** → **Create Alert**
-
-   - **Alert Type**: Issues
-   - **Condition**: When the error rate is above 1%
-   - **Environment**: Production (or All Environments)
-   - **Actions**: Send notification to Email/Slack
-
-   {/* TODO: Add screenshot of error rate alert configuration */}
-
-2. **Create a Web Vitals Alert (LCP)**
-
-   Create another alert for poor LCP performance:
-
-   - **Alert Type**: Metric Alert
-   - **Metric**: `p75(measurements.lcp)`
-   - **Condition**: Above 2500ms for 5 minutes
-   - **Filter**: `transaction.op:pageload`
-   - **Actions**: Send notification
-
-   {/* TODO: Add screenshot of LCP alert configuration */}
-
-   :::note[Why LCP?]
-   Largest Contentful Paint (LCP) measures how fast your main content loads. Above 2.5s is considered poor. During holiday traffic, this directly impacts conversions.
-   :::
-
-3. **Create a Backend Performance Alert**
-
-   Switch to your backend project → **Alerts** → **Create Alert**
-
-   - **Alert Type**: Metric Alert
-   - **Metric**: `p95(transaction.duration)`
-   - **Condition**: Above 1000ms (1 second)
-   - **Actions**: Send notification
-
-   {/* TODO: Add screenshot of backend performance alert */}
-
-</Steps>
-
-## Configuring GitHub Integration (For Seer AI)
-
-Sentry's AI-powered debugging tool, **Seer**, needs access to your code repository to provide context-aware suggestions and even open PRs with fixes. Let's connect GitHub now so we can use it later.
-
-{/* TODO: Add screenshot of GitHub integration page */}
-
-<Steps>
-
-1. **Enable AI features in Sentry**
-
-   Navigate to [Organization Settings](https://sentry.io/orgredirect/organizations/:orgslug/settings/#hideAiFeatures) and ensure AI features are enabled.
-
-2. **Install the GitHub integration**
-
-   - Go to **Organization Settings** → **Integrations** → **GitHub**
-   - Click **Install** (or **Upgrade** if you have the legacy integration)
-   - Click **Add Installation**
-   - Authorize Sentry in the GitHub popup
-
-3. **Select repositories**
-
-   Choose your forked `unborked` repository (or all repositories)
-
-4. **Configure repository access**
-
-   Back in Sentry:
-   - Navigate to your GitHub integration
-   - Click **Configurations** tab → **Configure**
-   - Confirm your repositories are listed (refresh if needed)
-
-</Steps>
-
-{/* TODO: Add screenshot of configured GitHub integration */}
-
-:::tip[What's Next?]
-With Sentry instrumented and alerts configured, you're ready to start identifying performance issues. In the next module, we'll dive into Web Vitals optimization and fix real performance problems.
-:::
+<ScaledImage src="/assets/img/backend-setup.png" alt="Sentry Traces on the backend" />
 
 ## Verify Your Setup
 
 Before moving on, let's confirm everything is working:
 
-- [ ] Frontend transactions appear in Sentry Performance view
+- [ ] Frontend transactions appear in Sentry Performance view with route names (e.g., `/products/:id`)
 - [ ] Backend transactions appear in Sentry Performance view
-- [ ] You can see a connected trace (View Full Trace) from frontend → backend
 - [ ] Session Replays are being recorded (check Replays tab in frontend project)
-- [ ] Alert rules are created and active
-- [ ] GitHub integration is connected
+- [ ] Console logs appear in Sentry traces and replays (check the console tab in any trace)
+- [ ] Error boundary is set up and routing errors are captured
+- [ ] Both frontend and backend are sending data to Sentry
 
 **Having issues?** Check that:
+
 - Environment variables are set correctly in both `.env` files
 - `instrument.ts` is imported first in both `main.tsx` and `index.ts`
 - Your dev servers are running (`pnpm dev` from root)
+
+:::tip[What's Next?]
+With Sentry instrumented and data flowing, you're ready to start identifying and fixing performance issues. In the next module, we'll dive into Web Vitals optimization.
+:::
 
 ---
 

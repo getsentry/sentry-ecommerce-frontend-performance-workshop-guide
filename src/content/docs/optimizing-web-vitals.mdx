@@ -12,11 +12,11 @@ Your e-commerce store is ready for the holiday rush, but performance testing rev
 
 By the end of this module, you will:
 
-- Understand how LCP, CLS, and TTFB impact e-commerce conversions
+- Understand how all 5 Web Vitals (LCP, CLS, FCP, TTFB, INP) impact e-commerce conversions
 - Fix slow-loading images causing poor LCP scores
 - Eliminate layout shifts from conditional banners using Sentry tags
 - Resolve render-blocking API calls with skeleton screens
-- Use Sentry's Web Vitals dashboard to measure improvements
+- Use Sentry's Web Vitals dashboard to measure improvements across all metrics
 
 :::note[Why Web Vitals Matter]
 Google's research shows that sites with good Core Web Vitals scores have **24% lower bounce rates**. For e-commerce, every 100ms improvement in LCP can increase conversion by 1%.
@@ -24,18 +24,29 @@ Google's research shows that sites with good Core Web Vitals scores have **24% l
 
 ## Understanding Core Web Vitals
 
-Sentry tracks three critical Web Vitals metrics:
+Sentry automatically tracks five critical Web Vitals metrics that measure how users actually experience your site:
 
 - **LCP (Largest Contentful Paint)**: How long until the main content loads
   - **Good**: < 2.5s | **Needs Improvement**: 2.5-4s | **Poor**: > 4s
+  - **Weight**: 30% of Performance Score
 
 - **CLS (Cumulative Layout Shift)**: How much content moves around while loading
   - **Good**: < 0.1 | **Needs Improvement**: 0.1-0.25 | **Poor**: > 0.25
+  - **Weight**: 15% of Performance Score
+
+- **FCP (First Contentful Paint)**: How quickly users see any content on the page
+  - **Good**: < 1.8s | **Needs Improvement**: 1.8-3s | **Poor**: > 3s
+  - **Weight**: 15% of Performance Score
 
 - **TTFB (Time to First Byte)**: How quickly the server responds
   - **Good**: < 800ms | **Needs Improvement**: 800-1800ms | **Poor**: > 1800ms
+  - **Weight**: 10% of Performance Score
 
-Let's fix three common issues affecting these metrics.
+- **INP (Interaction to Next Paint)**: How responsive your page is to user interactions
+  - **Good**: < 200ms | **Needs Improvement**: 200-500ms | **Poor**: > 500ms
+  - **Weight**: 30% of Performance Score
+
+These metrics are combined into a **Performance Score** (0-100) that summarizes your app's overall performance. In this module, we'll focus on fixing the three most common issues: slow images (LCP), layout shifts (CLS), and render-blocking APIs (TTFB/FCP).
 
 ## Issue #1: Slow Loading Images (LCP)
 
@@ -383,19 +394,24 @@ Let's verify our fixes improved the overall Web Vitals scores.
 1. **Check the Web Vitals dashboard**
 
    - Navigate to **Performance** → **Web Vitals**
-   - View the summary for all three metrics:
+   - View the summary for all five metrics:
      - **LCP**: Should be < 2.5s (was > 4s)
      - **CLS**: Should be < 0.1 (was > 0.25)
+     - **FCP**: Should be < 1.8s (improved with faster rendering)
      - **TTFB**: Should be < 800ms (was > 1800ms)
+     - **INP**: Should be < 200ms (responsive interactions)
+   - Check your overall **Performance Score** - should be > 90 (Good)
 
    {/* TODO: Add screenshot of overall Web Vitals improvement dashboard */}
 
-2. **Create a Web Vitals alert**
+2. **Create Web Vitals alerts**
 
-   You already set up an LCP alert in the previous module. Add CLS and TTFB alerts:
+   Set up alerts for key metrics to catch regressions:
 
+   - **LCP Alert**: `p75(measurements.lcp)` > 2500ms
    - **CLS Alert**: `p75(measurements.cls)` > 0.1
    - **TTFB Alert**: `p75(measurements.ttfb)` > 800ms
+   - **INP Alert**: `p75(measurements.inp)` > 200ms
 
 3. **View performance by page**
 
@@ -429,9 +445,12 @@ Sentry's AI can analyze your Web Vitals data and suggest further optimizations.
 
 ## Key Takeaways
 
-- **LCP**: Optimize images with proper sizing, lazy loading, and preloading
-- **CLS**: Reserve space for dynamic content (banners, ads) to prevent shifts
-- **TTFB**: Use skeleton screens instead of blocking on API calls
+- **All 5 Web Vitals tracked**: LCP, CLS, FCP, TTFB, and INP combine into a Performance Score (0-100)
+- **LCP (30% weight)**: Optimize images with proper sizing, lazy loading, and preloading
+- **CLS (15% weight)**: Reserve space for dynamic content (banners, ads) to prevent shifts
+- **FCP (15% weight)**: Improve with faster initial rendering and skeleton screens
+- **TTFB (10% weight)**: Use non-blocking loads and optimize server response times
+- **INP (30% weight)**: Ensure responsive interactions and avoid blocking the main thread
 - **Sentry tags**: Filter Web Vitals by user state, features, or any custom dimension
 - **Quick wins**: Fix the biggest offenders first - usually images and render-blocking requests
 
@@ -448,8 +467,10 @@ Before deploying these changes:
 - [ ] Conditional UI elements (banners) reserve space to prevent CLS
 - [ ] Sentry tags added for filtering Web Vitals by user state
 - [ ] Skeleton screens implemented for slow-loading content
-- [ ] Web Vitals alerts configured (LCP, CLS, TTFB)
+- [ ] All 5 Web Vitals alerts configured (LCP, CLS, FCP, TTFB, INP)
+- [ ] Performance Score > 90 (Good) in Sentry dashboard
 - [ ] Tested on real devices and slow network connections
+- [ ] INP verified with interactive elements (forms, buttons, navigation)
 
 ---
 

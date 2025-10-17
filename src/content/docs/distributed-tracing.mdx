@@ -18,6 +18,34 @@ By the end of this module, you will:
 - Fix database performance issues with query optimization
 - Measure improvements with Sentry's performance monitoring
 
+## Understanding Distributed Tracing
+
+Distributed tracing lets you follow a request from the user's browser, through your frontend, to your backend API, and down to the database. This is crucial for understanding end-to-end performance.
+
+The configuration you added in Module 1 (`tracePropagationTargets` in frontend) automatically connects frontend and backend traces.
+
+<Steps>
+
+1. **Verify distributed tracing is working**
+
+   Navigate to a product page in your app ([http://localhost:5173](http://localhost:5173))
+
+2. **Find a pageload transaction**
+
+   In Sentry (Frontend Project) → **Performance**, find the pageload transaction for that page
+
+3. **View the full distributed trace**
+
+   Click **"View Full Trace"** to see both frontend and backend spans connected in a single waterfall view
+
+   {/* TODO: Add screenshot of a distributed trace showing frontend → backend connection */}
+
+</Steps>
+
+:::tip[What You Should See]
+A waterfall view showing your React pageload, the API request, database queries, and total response time. This is your performance debugging superpower - you can see exactly where time is spent across your entire stack.
+:::
+
 ## The Problem: Sale API is Slow
 
 We added a skeleton screen, which improved **perceived performance** (TTFB is better). But the actual API response time is still terrible:
@@ -49,7 +77,6 @@ Under normal load (< 10 users), the sale API seems fine. But during holiday traf
    {/* TODO: Add screenshot of traffic simulation running in terminal */}
 
 2. **Watch Sentry Performance view**
-
    - Open your backend project in Sentry
    - Navigate to **Performance** → **Transactions**
    - Filter by: `transaction:"GET /api/products/sale"`
@@ -58,7 +85,6 @@ Under normal load (< 10 users), the sale API seems fine. But during holiday traf
    {/* TODO: Add screenshot of Sentry showing spike in transactions */}
 
 3. **Observe the slowdown**
-
    - Look at the **p95** response time
    - You'll see it's in the **2000-3000ms range** (Poor!)
    - Some requests are even worse (**> 5000ms**)
@@ -72,7 +98,6 @@ Let's follow a request from the frontend, through the backend, all the way to th
 <Steps>
 
 1. **Find a slow sale page transaction**
-
    - In Sentry (Frontend Project) → **Performance**
    - Filter by: `transaction:"/sale"`
    - Click into a transaction with high duration (> 2000ms)
@@ -80,7 +105,6 @@ Let's follow a request from the frontend, through the backend, all the way to th
    {/* TODO: Add screenshot of slow frontend /sale transaction */}
 
 2. **View the full distributed trace**
-
    - Click **"View Full Trace"**
    - You'll see the complete waterfall:
      - Frontend: `/sale` pageload (2500ms total)
@@ -91,7 +115,6 @@ Let's follow a request from the frontend, through the backend, all the way to th
    {/* TODO: Add screenshot of distributed trace waterfall */}
 
 3. **Analyze the backend span**
-
    - Click into the backend span
    - Look at the child spans (database queries)
    - **This is where you'll see the problem!**
@@ -196,7 +219,7 @@ Let's add instrumentation to the backend so we can see exactly what's happening.
            );
 
            span.setAttributes({
-             'db.queries.total': 1 + (saleProducts.length * 2), // 101 queries!
+             'db.queries.total': 1 + saleProducts.length * 2, // 101 queries!
            });
 
            Sentry.logger.info(
@@ -207,7 +230,6 @@ Let's add instrumentation to the backend so we can see exactly what's happening.
              success: true,
              products: enrichedProducts,
            });
-
          } catch (error) {
            Sentry.logger.error(`Sale API error: ${error.message}`);
            Sentry.captureException(error);
@@ -227,7 +249,6 @@ Let's add instrumentation to the backend so we can see exactly what's happening.
    ```
 
 4. **View the instrumented trace**
-
    - Go back to Sentry → Find a new `GET /api/products/sale` transaction
    - Expand the waterfall
    - You'll now see all 101 child spans clearly labeled ✅
@@ -315,7 +336,6 @@ Now that we've identified the problem, let's fix it by fetching all data in a si
              success: true,
              products: products,
            });
-
          } catch (error) {
            Sentry.captureException(error);
            res.status(500).json({ error: 'Failed to fetch sale products' });
@@ -326,13 +346,11 @@ Now that we've identified the problem, let's fix it by fetching all data in a si
    ```
 
 2. **Test the optimization**
-
    - Restart the backend: `pnpm dev`
    - Run the traffic simulation again: `pnpm traffic`
    - Check Sentry → Find a new transaction
 
 3. **View the improved trace**
-
    - You'll now see:
      - `db.query.sale_products_optimized`: **80-120ms** ✅
      - No more N+1 child spans!
@@ -349,7 +367,6 @@ Let's compare before and after using Sentry's performance data.
 <Steps>
 
 1. **Compare transaction durations**
-
    - Go to **Performance** → `GET /api/products/sale`
    - Look at the **p95** duration over time
    - You should see a dramatic drop after deploying the fix:
@@ -360,7 +377,6 @@ Let's compare before and after using Sentry's performance data.
    {/* TODO: Add screenshot showing performance improvement graph */}
 
 2. **Check database query counts**
-
    - Click into an optimized transaction
    - Check the `db.queries.total` attribute
    - **Before**: 101 queries
@@ -368,7 +384,6 @@ Let's compare before and after using Sentry's performance data.
    - **Reduction**: **99% fewer queries!**
 
 3. **Verify frontend improvement**
-
    - Navigate to your frontend project in Sentry
    - Check the `/sale` page transactions
    - The skeleton screen should now disappear much faster
@@ -415,7 +430,6 @@ Even with JOINs, queries can be slow without proper indexes. Let's add them.
    ```
 
 4. **Test the indexed queries**
-
    - Run the traffic simulation again: `pnpm traffic`
    - Check the query duration in Sentry
    - **Indexed query**: **30-50ms** (down from 80-120ms) ✅
@@ -423,22 +437,23 @@ Even with JOINs, queries can be slow without proper indexes. Let's add them.
 </Steps>
 
 :::tip[Database Performance Quick Wins]
+
 - **Add indexes** on columns used in WHERE, JOIN, and ORDER BY clauses
 - **Use JOINs** instead of separate queries to avoid N+1 problems
 - **Select only needed columns** - don't use `SELECT *`
 - **Add LIMIT** clauses to prevent accidentally fetching millions of rows
-:::
+  :::
 
 ## Performance Comparison
 
 Here's the complete before/after:
 
-| Metric | Before (N+1) | After (JOINs + Indexes) | Improvement |
-|--------|--------------|-------------------------|-------------|
-| API Response Time (p95) | 2500ms | 50ms | **98% faster** |
-| Database Queries | 101 queries | 1 query | **99% reduction** |
-| Frontend Skeleton Duration | 2500ms | 50ms | **98% faster** |
-| User Experience | Terrible | Fast ✅ | 🎉 |
+| Metric                     | Before (N+1) | After (JOINs + Indexes) | Improvement       |
+| -------------------------- | ------------ | ----------------------- | ----------------- |
+| API Response Time (p95)    | 2500ms       | 50ms                    | **98% faster**    |
+| Database Queries           | 101 queries  | 1 query                 | **99% reduction** |
+| Frontend Skeleton Duration | 2500ms       | 50ms                    | **98% faster**    |
+| User Experience            | Terrible     | Fast ✅                 | 🎉                |
 
 ## Using Sentry's Seer AI for Optimization Suggestions
 
@@ -447,7 +462,6 @@ Sentry's AI can automatically detect these patterns and suggest fixes.
 <Steps>
 
 1. **Access Seer from a slow transaction**
-
    - Find a transaction from before the optimization
    - Click **"Ask Seer"** or **"Get AI Insights"**
 

@@ -16,7 +16,7 @@ Before you begin, ensure you have the following installed:
 - [Node.js](https://nodejs.org/) (version 18 or higher)
 - [pnpm](https://pnpm.io/) (recommended package manager)
 
-Additionally, you'll need a Sentry account to follow along with the performance and error monitoring portions of this workshop:
+Additionally, you'll need a Sentry account to follow along with the tracing and monitoring portions of this workshop:
 
 - [Sign up for a free Sentry.io](https://sentry.io/signup/) if you don't already have an account
 
@@ -29,22 +29,34 @@ We recommend setting up two separate projects in your Sentry account: one for th
 <Steps>
 1. **Fork the repository**
 
-     Go to [https://github.com/getsentry/sentry-ecommerce-frontend-performance-workshop-app](https://github.com/getsentry/sentry-ecommerce-frontend-performance-workshop-app) and click the "Fork" button in the top right. We'll fork instead of cloning so we can use Sentry's Seer AI to open PRs with performance fixes.
+     Go to [https://github.com/getsentry/sentry-ecommerce-frontend-performance-workshop-app](https://github.com/getsentry/sentry-ecommerce-frontend-performance-workshop-app) and click the "Fork" button in the top right. We'll do this instead of simply cloning the repo because we'll demo features of Sentry's AI agent, Seer, which can open PRs to fix code for us.
 
-2. **Clone your fork into a directory we're going to call `unborked`**
+     <ScaledImage src="/assets/img/repo-fork.png" alt="Forking the repository" />
+
+2. **Leave the fork network**
+
+   Go to the settings of your forked repo, scroll all the way down to the Danger Zone, click "Leave fork network", and follow the prompts to convert your forked repo into a standalone repo, all nice and isolated from the original.
+
+   <ScaledImage
+     src="/assets/img/leave-fork-network.png"
+     alt="Leaving the fork network"
+     size={75}
+   />
+
+3. **Clone your fork into a directory we're going to call `unborked`**
 
    ```bash
    git clone https://github.com/<your-username>/sentry-ecommerce-frontend-performance-workshop-app.git unborked
    cd unborked
    ```
 
-3. **Install dependencies**
+4. **Install dependencies**
 
    ```bash
    pnpm install
    ```
 
-4. **Set up environment variables**
+5. **Set up environment variables**
 
    The project uses a turborepo monorepo structure with `apps/web` (frontend) and `apps/api` (backend). Each has an `.env.example` file you can copy:
 
@@ -84,16 +96,16 @@ We recommend setting up two separate projects in your Sentry account: one for th
    DATABASE_URL=postgresql://user:password@localhost:5432/unborked
    ```
 
-5. **Run database migrations and seed data**
+6. **Run database migrations and seed data**
 
    From the root `unborked` directory:
 
    ```bash
-   pnpm migrate
-   pnpm seed
+   pnpm db:migrate
+   pnpm db:seed
    ```
 
-6. **Start the development servers**
+7. **Start the development servers**
 
    This single command starts both frontend and backend:
 
@@ -101,7 +113,7 @@ We recommend setting up two separate projects in your Sentry account: one for th
    pnpm dev
    ```
 
-7. **Access the application**
+8. **Access the application**
 
    The project will now be running:
    - Frontend: [http://localhost:5173](http://localhost:5173)
@@ -110,6 +122,8 @@ We recommend setting up two separate projects in your Sentry account: one for th
 </Steps>
 
 ## What's Available After Setup
+
+<ScaledImage src="/assets/img/initial-app.png" alt="Unborked app" />
 
 Once you've completed the setup, you'll have access to:
 

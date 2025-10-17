@@ -30,7 +30,10 @@ export default defineConfig({
           label: 'Workshop',
           items: [
             { label: 'Quickstart', slug: 'quickstart' },
-            { label: 'Setting Up Performance & Error Monitoring', slug: 'getting-started' },
+            {
+              label: 'Getting Started with Sentry',
+              slug: 'getting-started',
+            },
             {
               label: 'Optimizing Performance with Web Vitals',
               slug: 'optimizing-web-vitals',
