@@ -1,40 +1,33 @@
 ---
-title: Debugging with Seer AI
-description: Use Sentry's AI-powered debugging to get root cause analysis, fix suggestions, and automated PRs
+title: Production Readiness
+description: Set up alerts, dashboards, and AI-powered debugging to operate your app in production with confidence
 ---
 
 import { Steps } from '@astrojs/starlight/components';
 import ScaledImage from '../../components/ScaledImage.astro';
 
-You've been manually diagnosing performance issues, writing fixes, and optimizing code throughout this workshop. But what if AI could do the heavy lifting? Enter **Seer** - Sentry's AI debugger that analyzes issues, suggests fixes, and even opens PRs automatically.
+You've instrumented Sentry, fixed Web Vitals issues, and optimized backend performance. Now it's time to prepare for production: setting up alerts to catch issues fast, creating dashboards for ongoing monitoring, and leveraging **Seer** (Sentry's AI debugger) for automated root cause analysis.
 
 ## Learning Objectives
 
 By the end of this module, you will:
 
+- Configure alerts to catch performance regressions and errors before users notice
+- Build dashboards to monitor key metrics across your application
 - Use Seer to get root cause analysis for performance issues
 - Get AI-suggested fixes for N+1 queries and performance bottlenecks
 - Have Seer automatically open PRs with fixes
 - Understand when to trust AI suggestions vs. manual review
-- Leverage Seer for ongoing performance optimization
 
-:::note[AI-Powered Debugging]
-Seer analyzes your traces, errors, and code to provide context-aware suggestions. It understands your specific codebase, not just generic patterns, making its recommendations highly actionable.
-:::
+## Setting Up Operational Tools
 
-## What is Seer?
+Throughout this workshop, you've been manually investigating issues in Sentry. In production, you need automated systems to notify you when things go wrong and help you debug faster. Let's set up:
 
-Seer is Sentry's AI debugging assistant that:
+1. **Alerts** - Get notified when errors spike or performance degrades
+2. **Dashboards** - Monitor key metrics at a glance
+3. **GitHub Integration** - Enable AI-powered debugging with Seer
 
-- **Analyzes issues**: Understands traces, errors, and user impact
-- **Finds root causes**: Identifies N+1 queries, missing indexes, inefficient code
-- **Suggests fixes**: Provides code-level recommendations
-- **Opens PRs**: Automatically creates pull requests with fixes (if you want)
-- **Learns from your codebase**: Uses GitHub integration for context-aware suggestions
-
-## Setting Up for Production
-
-Now that you've experienced real performance issues and learned how to debug them, let's set up the operational tools you'll need for production: alerts to catch issues fast and AI-powered debugging with Seer.
+Let's start with the basics: alerts and monitoring.
 
 ### Setting Up Alert Rules
 
@@ -87,6 +80,70 @@ With all the data flowing through Sentry, let's set up alerts to catch critical 
 
 </Steps>
 
+### Creating Performance Dashboards
+
+Alerts notify you when things break. Dashboards help you monitor trends and spot issues before they trigger alerts.
+
+<Steps>
+
+1. **Create a custom dashboard**
+
+   Navigate to **Dashboards** → **Create Dashboard**
+   - Name it: "E-commerce Performance Overview"
+
+2. **Add Web Vitals widget**
+
+   Add a widget to track your Core Web Vitals:
+   - **Widget Type**: Line Chart
+   - **Metric**: `p75(measurements.lcp)`, `p75(measurements.cls)`, `p75(measurements.fcp)`
+   - **Group By**: `transaction`
+   - **Time Range**: Last 7 days
+
+   This shows which pages have poor Web Vitals over time.
+
+   {/* TODO: Add screenshot of Web Vitals dashboard widget */}
+
+3. **Add API Performance widget**
+
+   Track your backend API performance:
+   - **Widget Type**: Table
+   - **Metric**: `p95(transaction.duration)`
+   - **Filter**: `transaction.op:http.server`
+   - **Sort By**: p95 (descending)
+
+   This highlights your slowest API endpoints.
+
+4. **Add Error Rate widget**
+
+   Monitor error trends:
+   - **Widget Type**: Area Chart
+   - **Metric**: `failure_rate()`
+   - **Group By**: `transaction`
+   - **Time Range**: Last 24 hours
+
+   Spikes in error rate often indicate deployment issues.
+
+5. **Add Throughput widget**
+
+   Track your application traffic:
+   - **Widget Type**: Line Chart
+   - **Metric**: `count()`
+   - **Group By**: `transaction.op`
+   - **Time Range**: Last 7 days
+
+   Understand which parts of your app get the most traffic.
+
+   {/* TODO: Add screenshot of complete dashboard */}
+
+</Steps>
+
+:::tip[Dashboard Best Practices]
+- Review dashboards weekly during team meetings
+- Create separate dashboards for frontend and backend
+- Share dashboards with stakeholders to show performance improvements
+- Set dashboard as your organization's homepage for visibility
+:::
+
 ### Configuring GitHub Integration
 
 Sentry's AI-powered debugging tool, **Seer**, needs access to your code repository to provide context-aware suggestions and open PRs with fixes automatically.
@@ -127,6 +184,18 @@ Sentry's AI-powered debugging tool, **Seer**, needs access to your code reposito
 :::tip[Ready for Seer]
 With alerts configured and GitHub connected, you're now ready to leverage Sentry's AI-powered debugging capabilities. Seer can analyze the same issues you've been fixing manually and suggest optimizations automatically.
 :::
+
+## What is Seer?
+
+Seer is Sentry's AI debugging assistant that helps you fix issues faster:
+
+- **Analyzes issues**: Understands traces, errors, and user impact
+- **Finds root causes**: Identifies N+1 queries, missing indexes, inefficient code patterns
+- **Suggests fixes**: Provides code-level recommendations specific to your codebase
+- **Opens PRs**: Automatically creates pull requests with fixes (optional)
+- **Learns from your code**: Uses GitHub integration for context-aware suggestions
+
+With GitHub connected, Seer can read your code, understand your architecture, and provide highly specific recommendations instead of generic advice.
 
 ## Using Seer for Root Cause Analysis
 
@@ -547,29 +616,32 @@ Seer doesn't just optimize performance - it debugs errors too.
 
 ## Key Takeaways
 
+- **Alerts catch issues fast** - Configure error rate, Web Vitals, and backend performance alerts
+- **Dashboards provide visibility** - Monitor trends and spot issues before they escalate
+- **GitHub integration enables AI** - Seer needs code access for context-aware suggestions
 - **Seer provides root cause analysis** for performance issues and errors
-- **AI-suggested fixes** are specific to your codebase, not generic
+- **AI-suggested fixes** are specific to your codebase, not generic patterns
 - **Automated PRs** save time but still need human review
-- **Use Seer proactively** for weekly performance optimization
-- **Trust but verify** - Seer is a tool, not a replacement for developer judgment
+- **Trust but verify** - Seer is a powerful tool, not a replacement for developer judgment
 
 ## Workshop Complete! 🎉
 
 Congratulations! You've built a comprehensive frontend performance monitoring system:
 
 ✅ **Module 1:** Instrumented Sentry for performance & error tracking
-✅ **Module 2:** Fixed Web Vitals issues (LCP, CLS, TTFB)
+✅ **Module 2:** Fixed Web Vitals issues (LCP, CLS, FCP)
 ✅ **Module 3:** Traced frontend slowness to backend N+1 queries
 ✅ **Module 4:** Used Session Replay to fix UX issues hurting conversions
-✅ **Module 5:** Leveraged Seer AI for automated debugging and fixes
+✅ **Module 5:** Set up alerts, dashboards, and AI-powered debugging with Seer
 
 ### Your Application is Now Ready For:
 
 - **High traffic periods** (Black Friday, holiday sales)
-- **Fast issue detection** with real-time alerts
+- **Fast issue detection** with real-time alerts and dashboards
 - **Quick debugging** with Session Replay and distributed tracing
 - **Proactive optimization** with Seer AI suggestions
-- **Confident deployments** with performance monitoring
+- **Team visibility** with shared performance dashboards
+- **Confident deployments** with comprehensive monitoring
 
 ## Next Steps
 
@@ -582,10 +654,11 @@ Congratulations! You've built a comprehensive frontend performance monitoring sy
 
 **Continuous Improvement:**
 
-1. Review Sentry dashboards weekly
-2. Ask Seer about slow transactions
-3. Watch Session Replays for UX issues
-4. Iterate on performance optimizations
+1. Review your performance dashboard weekly
+2. Investigate alerts as they fire
+3. Ask Seer about slow transactions
+4. Watch Session Replays for UX issues
+5. Iterate on performance optimizations based on data
 
 **Share Your Success:**
 
